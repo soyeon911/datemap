@@ -22,7 +22,8 @@ type RawPlaceSearchResult = {
   category?: string | null;
 };
 
-const placeSearchEndpoint = process.env.EXPO_PUBLIC_NAVER_PLACE_SEARCH_ENDPOINT;
+const placeSearchEndpoint =
+  process.env.EXPO_PUBLIC_NAVER_PLACE_SEARCH_ENDPOINT ?? process.env.EXPO_PUBLIC_NAVER_LOCAL_PROXY_URL;
 
 export async function searchNaverPlaces(query: string): Promise<NaverPlaceSearchResult[]> {
   const trimmedQuery = query.trim();
