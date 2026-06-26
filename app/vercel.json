@@ -1,5 +1,8 @@
 {
   "functions": {
+    "api/naver-local.js": {
+      "maxDuration": 10
+    },
     "api/naver-place-search.js": {
       "maxDuration": 10
     }

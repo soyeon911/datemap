@@ -1,7 +1,11 @@
-const localSearchClientId = process.env.NAVER_SEARCH_CLIENT_ID;
-const localSearchClientSecret = process.env.NAVER_SEARCH_CLIENT_SECRET;
-const naverMapClientId = process.env.NAVER_MAP_CLIENT_ID;
-const naverMapClientSecret = process.env.NAVER_MAP_CLIENT_SECRET;
+const localSearchClientId = getEnv('NAVER_SEARCH_CLIENT_ID', 'NAVER_LOCAL_CLIENT_ID', 'NAVER_CLIENT_ID');
+const localSearchClientSecret = getEnv('NAVER_SEARCH_CLIENT_SECRET', 'NAVER_LOCAL_CLIENT_SECRET', 'NAVER_CLIENT_SECRET');
+const naverMapClientId = getEnv('NAVER_MAP_CLIENT_ID', 'NAVER_CLOUD_MAP_CLIENT_ID', 'NAVER_NCP_CLIENT_ID');
+const naverMapClientSecret = getEnv(
+  'NAVER_MAP_CLIENT_SECRET',
+  'NAVER_CLOUD_MAP_CLIENT_SECRET',
+  'NAVER_NCP_CLIENT_SECRET'
+);
 
 export default async function handler(request, response) {
   setCorsHeaders(response);
@@ -157,6 +161,18 @@ function getQueryValue(value) {
   }
 
   return String(value ?? '').trim();
+}
+
+function getEnv(...names) {
+  for (const name of names) {
+    const value = process.env[name];
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 function stripHtml(value) {
