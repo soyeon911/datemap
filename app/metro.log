@@ -1,0 +1,10 @@
+env: load .env
+env: export EXPO_PUBLIC_NAVER_LOCAL_PROXY_URL EXPO_PUBLIC_NAVER_MAP_CLIENT_ID EXPO_PUBLIC_NAVER_PLACE_SEARCH_ENDPOINT
+Starting project at /Users/soyeon/develop/datemap/app
+Using src/app as the root directory for Expo Router.
+React Compiler enabled
+Starting Metro Bundler
+
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+Waiting on http://localhost:8081
+Logs for your project will appear below.
