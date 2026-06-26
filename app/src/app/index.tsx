@@ -435,8 +435,8 @@ export default function HomeScreen() {
           <View style={styles.brandBlock}>
             <Image source={dateMapLogo} style={styles.headerLogo} />
             <View style={styles.brandText}>
-              <Text style={[styles.label, isDarkMode && styles.labelDark]}>데이트했던 장소와 그날의 추억을 함께 보관하는 지도</Text>
               <Text style={[styles.title, isDarkMode && styles.titleDark]}>DearMap</Text>
+              <Text style={[styles.label, isDarkMode && styles.labelDark]}>함께한 순간을 장소와 함께 기록해요</Text>
             </View>
           </View>
           <View style={styles.headerActions}>

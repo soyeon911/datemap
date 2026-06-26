@@ -182,7 +182,7 @@ EXPO_PUBLIC_NAVER_MAP_CLIENT_ID=
 - `ios.bundleIdentifier`: ``
 - `@mj-studio/react-native-naver-map` config plugin 연결
 - `EXPO_PUBLIC_NAVER_MAP_CLIENT_ID`를 `app.config.js`에서 주입
-- iOS 전용 `DateMapView`에서 `NaverMapView` 사용
+- iOS 전용 `DearMapView`에서 `NaverMapView` 사용
 
 다음 실행 전 필요:
 

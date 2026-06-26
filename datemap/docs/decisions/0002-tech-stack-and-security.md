@@ -10,7 +10,7 @@ Accepted
 
 ## 결정
 
-DateMap의 MVP 기술 스택은 React Native + Expo로 시작합니다. 로컬 DB는 SQLite를 사용합니다.
+DearMap의 MVP 기술 스택은 React Native + Expo로 시작합니다. 로컬 DB는 SQLite를 사용합니다.
 
 보안과 개인정보 보호는 모든 기능의 기본 요구사항으로 둡니다. 이후 로그인과 커플 연동 기능을 추가할 계획이 있으므로, MVP 단계의 로컬 데이터 모델도 사용자 소유권과 공유 권한을 확장할 수 있게 설계합니다.
 

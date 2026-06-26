@@ -2,7 +2,7 @@
 
 ## 앱 방식
 
-DateMap은 모바일 앱으로 시작합니다. 앱 기술 스택은 React Native + Expo를 기본으로 결정합니다.
+DearMap은 모바일 앱으로 시작합니다. 앱 기술 스택은 React Native + Expo를 기본으로 결정합니다.
 
 ## 확정 기술 스택
 

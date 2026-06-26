@@ -4,16 +4,17 @@
     "slug": "dearmap",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/splash-icon.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "dearmap",
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.datemap",
-      "icon": "./assets/images/splash-icon.png"
+      "icon": "./assets/images/icon.png"
     },
     "android": {
       "adaptiveIcon": {
-        "icon": "./assets/images/splash-icon.png"
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#EADCD8"
       },
       "predictiveBackGestureEnabled": false
     },

@@ -10,7 +10,7 @@ Accepted
 
 ## 결정
 
-DateMap의 첫 지도 구현은 iOS를 우선으로 진행합니다. 지도 연동은 React Native용 네이버 지도 라이브러리 `@mj-studio/react-native-naver-map`을 사용합니다.
+DearMap의 첫 지도 구현은 iOS를 우선으로 진행합니다. 지도 연동은 React Native용 네이버 지도 라이브러리 `@mj-studio/react-native-naver-map`을 사용합니다.
 
 ## 이유
 
