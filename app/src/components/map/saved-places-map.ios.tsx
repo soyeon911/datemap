@@ -1,4 +1,6 @@
 import { NaverMapMarkerOverlay, NaverMapView } from '@mj-studio/react-native-naver-map';
+import * as Location from 'expo-location';
+import { useEffect, useState } from 'react';
 import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 
 const HEART_MARKER_IMAGE = require('@/assets/images/map-heart-marker.png');
@@ -17,7 +19,37 @@ type SavedPlacesMapProps = {
 };
 
 export function SavedPlacesMap({ places, style, onSelectPlace }: SavedPlacesMapProps) {
-  const region = getMapRegion(places);
+  const [currentLocationRegion, setCurrentLocationRegion] = useState<MapRegion | null>(null);
+  const region = places.length > 0 ? getMapRegion(places) : currentLocationRegion ?? getDefaultKoreaRegion();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadCurrentLocation() {
+      const permission = await Location.requestForegroundPermissionsAsync();
+
+      if (permission.status !== Location.PermissionStatus.GRANTED) {
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({});
+
+      if (isMounted) {
+        setCurrentLocationRegion({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        });
+      }
+    }
+
+    loadCurrentLocation().catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <NaverMapView
@@ -51,16 +83,23 @@ export function SavedPlacesMap({ places, style, onSelectPlace }: SavedPlacesMapP
   );
 }
 
-function getMapRegion(places: SavedPlacesMapPlace[]) {
-  if (places.length === 0) {
-    return {
-      latitude: 36.35,
-      longitude: 127.8,
-      latitudeDelta: 5.9,
-      longitudeDelta: 6.6,
-    };
-  }
+type MapRegion = {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+};
 
+function getDefaultKoreaRegion(): MapRegion {
+  return {
+    latitude: 36.35,
+    longitude: 127.8,
+    latitudeDelta: 5.9,
+    longitudeDelta: 6.6,
+  };
+}
+
+function getMapRegion(places: SavedPlacesMapPlace[]): MapRegion {
   const latitudes = places.map((place) => place.latitude);
   const longitudes = places.map((place) => place.longitude);
   const minLat = Math.min(...latitudes);

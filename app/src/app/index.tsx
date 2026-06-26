@@ -44,6 +44,7 @@ type FilterPreset = 'all' | 'this_week' | 'this_month' | 'last_30_days';
 
 const today = new Date().toISOString().slice(0, 10);
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
+const monthLabels = Array.from({ length: 12 }, (_, index) => `${index + 1}월`);
 const filterPresetLabels: Record<FilterPreset, string> = {
   all: '전체 기간',
   this_week: '이번 주',
@@ -81,6 +82,7 @@ export default function HomeScreen() {
   const [selectedSavedPlace, setSelectedSavedPlace] = useState<SavedDatePlace | null>(null);
   const [editingDatePlace, setEditingDatePlace] = useState<SavedDatePlace | null>(null);
   const [detailPhotoIndex, setDetailPhotoIndex] = useState(0);
+  const [fullScreenPhotoUri, setFullScreenPhotoUri] = useState<string | null>(null);
   const cardScrollRef = useRef<ScrollView | null>(null);
   const cardScrollIndexRef = useRef(0);
 
@@ -163,25 +165,13 @@ export default function HomeScreen() {
     const timer = setInterval(() => {
       cardScrollIndexRef.current = (cardScrollIndexRef.current + 1) % filteredPlaces.length;
       cardScrollRef.current?.scrollTo({
-        x: cardScrollIndexRef.current * 278,
+        x: cardScrollIndexRef.current * 298,
         animated: true,
       });
     }, 3400);
 
     return () => clearInterval(timer);
   }, [filteredPlaces.length]);
-
-  useEffect(() => {
-    if (!selectedSavedPlace || detailPhotoUris.length < 2) {
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setDetailPhotoIndex((currentIndex) => (currentIndex + 1) % detailPhotoUris.length);
-    }, 3200);
-
-    return () => clearInterval(timer);
-  }, [detailPhotoUris.length, selectedSavedPlace]);
 
   async function refreshDatePlaces() {
     const [count, places] = await Promise.all([countDateCards(db), getSavedDatePlaces(db)]);
@@ -423,9 +413,23 @@ export default function HomeScreen() {
     setPlaceSearchMessage(`${result.name}을 선택했습니다.`);
   }
 
+  function removePhotoAtIndex(photoIndex: number) {
+    const removedPhoto = photos[photoIndex];
+    const nextPhotos = photos.filter((_, index) => index !== photoIndex);
+
+    setPhotos(nextPhotos);
+
+    if (removedPhoto?.uri === coverPhotoUri) {
+      setCoverPhotoUri(nextPhotos[0]?.uri ?? null);
+    }
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.mainScreen}>
+      <ScrollView
+        style={styles.mainScreenScroll}
+        contentContainerStyle={styles.mainScreen}
+        showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View>
             <TextLabel>DateMap</TextLabel>
@@ -521,7 +525,7 @@ export default function HomeScreen() {
             <TextButton>장소 추가하기</TextButton>
           </Pressable>
         </View>
-      </View>
+      </ScrollView>
 
       <Modal
         animationType="fade"
@@ -581,6 +585,7 @@ export default function HomeScreen() {
             )}
 
             <CalendarPicker
+              key={`filter_${datePickerMode}_${activeFilterDate}`}
               selectedDate={activeFilterDate}
               onSelectDate={datePickerMode === 'range' ? selectFilterDate : selectWeekFilter}
               activeDates={activeDates}
@@ -618,7 +623,7 @@ export default function HomeScreen() {
             <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
               <Section>
                 <TextSectionTitle>날짜 선택</TextSectionTitle>
-                <CalendarPicker selectedDate={date} onSelectDate={setDate} />
+                <CalendarPicker key={`editor_${date}`} selectedDate={date} onSelectDate={setDate} />
               </Section>
 
               <View style={styles.mapPanel}>
@@ -687,21 +692,26 @@ export default function HomeScreen() {
                 <TextBody>사진을 한 장씩 추가하고, 한 장을 대표 사진으로 지정합니다.</TextBody>
                 {photos.length > 0 ? (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoRow}>
-                    {photos.map((photo) => {
+                    {photos.map((photo, index) => {
                       const isCover = photo.uri === coverPhotoUri;
 
                       return (
-                        <Pressable
-                          key={photo.uri}
-                          style={[styles.photoTile, isCover && styles.coverPhotoTile]}
-                          onPress={() => setCoverPhotoUri(photo.uri)}>
-                          <Image source={{ uri: photo.uri }} style={styles.photoImage} />
-                          <View style={[styles.coverBadge, isCover && styles.coverBadgeSelected]}>
-                            <Text style={[styles.coverBadgeText, isCover && styles.coverBadgeTextSelected]}>
-                              {isCover ? '대표' : '선택'}
-                            </Text>
-                          </View>
-                        </Pressable>
+                        <View key={`${photo.uri}_${index}`} style={[styles.photoTile, isCover && styles.coverPhotoTile]}>
+                          <Pressable style={styles.photoTileCoverButton} onPress={() => setCoverPhotoUri(photo.uri)}>
+                            <Image source={{ uri: photo.uri }} style={styles.photoImage} />
+                            <View style={[styles.coverBadge, isCover && styles.coverBadgeSelected]}>
+                              <Text style={[styles.coverBadgeText, isCover && styles.coverBadgeTextSelected]}>
+                                {isCover ? '대표' : '선택'}
+                              </Text>
+                            </View>
+                          </Pressable>
+                          <Pressable
+                            accessibilityLabel="사진 삭제"
+                            style={styles.photoDeleteButton}
+                            onPress={() => removePhotoAtIndex(index)}>
+                            <Text style={styles.photoDeleteButtonText}>×</Text>
+                          </Pressable>
+                        </View>
                       );
                     })}
                   </ScrollView>
@@ -761,9 +771,9 @@ export default function HomeScreen() {
         transparent
         visible={selectedSavedPlace !== null}
         onRequestClose={() => setSelectedSavedPlace(null)}>
-        <View style={styles.detailOverlay}>
+        <Pressable style={styles.detailOverlay} onPress={() => setSelectedSavedPlace(null)}>
           {selectedSavedPlace ? (
-            <View style={styles.detailSheet}>
+            <Pressable style={styles.detailSheet} onPress={(event) => event.stopPropagation()}>
               <View style={styles.detailActionBar}>
                 <Pressable style={styles.detailActionButton} onPress={() => setSelectedSavedPlace(null)}>
                   <Text style={styles.detailActionText}>닫기</Text>
@@ -780,7 +790,11 @@ export default function HomeScreen() {
 
               {detailPhotoUris.length > 0 ? (
                 <View style={styles.detailImageFrame}>
-                  <Image source={{ uri: detailPhotoUris[detailPhotoIndex] }} style={styles.detailImage} />
+                  <Pressable
+                    style={styles.detailImageButton}
+                    onPress={() => setFullScreenPhotoUri(detailPhotoUris[detailPhotoIndex])}>
+                    <Image source={{ uri: detailPhotoUris[detailPhotoIndex] }} style={styles.detailImage} />
+                  </Pressable>
                   {detailPhotoUris.length > 1 ? (
                     <>
                       <Pressable
@@ -837,9 +851,26 @@ export default function HomeScreen() {
                   </View>
                 ) : null}
               </View>
-            </View>
+            </Pressable>
           ) : null}
-        </View>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={fullScreenPhotoUri !== null}
+        onRequestClose={() => setFullScreenPhotoUri(null)}>
+        <Pressable style={styles.fullScreenPhotoOverlay} onPress={() => setFullScreenPhotoUri(null)}>
+          {fullScreenPhotoUri ? (
+            <>
+              <Image source={{ uri: fullScreenPhotoUri }} style={styles.fullScreenPhoto} resizeMode="contain" />
+              <View style={styles.fullScreenPhotoClose}>
+                <Text style={styles.fullScreenPhotoCloseText}>닫기</Text>
+              </View>
+            </>
+          ) : null}
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );
@@ -860,8 +891,13 @@ function CalendarPicker({
 }) {
   const safeSelectedDate = selectedDate || today;
   const selected = new Date(`${safeSelectedDate}T00:00:00`);
-  const year = selected.getFullYear();
-  const month = selected.getMonth();
+  const [displayYear, setDisplayYear] = useState(selected.getFullYear());
+  const [displayMonth, setDisplayMonth] = useState(selected.getMonth());
+  const [openSelector, setOpenSelector] = useState<'year' | 'month' | null>(null);
+  const yearOptions = useMemo(() => getYearOptions(displayYear), [displayYear]);
+
+  const year = displayYear;
+  const month = displayMonth;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
   const cells = [
@@ -879,9 +915,73 @@ function CalendarPicker({
 
   return (
     <View style={styles.calendar}>
-      <Text style={styles.calendarTitle}>
-        {year}년 {month + 1}월
-      </Text>
+      <View style={styles.calendarSelectorRow}>
+        <View style={styles.calendarSelectorGroup}>
+          <Pressable
+            style={styles.calendarSelectorButton}
+            onPress={() => setOpenSelector(openSelector === 'year' ? null : 'year')}>
+            <Text style={styles.calendarSelectorText}>{year}년</Text>
+            <Text style={styles.calendarSelectorChevron}>⌄</Text>
+          </Pressable>
+          {openSelector === 'year' ? (
+            <ScrollView
+              style={styles.calendarSelectorMenu}
+              nestedScrollEnabled
+              showsVerticalScrollIndicator={false}>
+              {yearOptions.map((yearOption) => (
+                <Pressable
+                  key={yearOption}
+                  style={[styles.calendarSelectorItem, yearOption === year && styles.calendarSelectorItemActive]}
+                  onPress={() => {
+                    setDisplayYear(yearOption);
+                    setOpenSelector(null);
+                  }}>
+                  <Text
+                    style={[
+                      styles.calendarSelectorItemText,
+                      yearOption === year && styles.calendarSelectorItemTextActive,
+                    ]}>
+                    {yearOption}년
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+        </View>
+
+        <View style={styles.calendarSelectorGroup}>
+          <Pressable
+            style={styles.calendarSelectorButton}
+            onPress={() => setOpenSelector(openSelector === 'month' ? null : 'month')}>
+            <Text style={styles.calendarSelectorText}>{month + 1}월</Text>
+            <Text style={styles.calendarSelectorChevron}>⌄</Text>
+          </Pressable>
+          {openSelector === 'month' ? (
+            <ScrollView
+              style={styles.calendarSelectorMenu}
+              nestedScrollEnabled
+              showsVerticalScrollIndicator={false}>
+              {monthLabels.map((monthLabel, monthIndex) => (
+                <Pressable
+                  key={monthLabel}
+                  style={[styles.calendarSelectorItem, monthIndex === month && styles.calendarSelectorItemActive]}
+                  onPress={() => {
+                    setDisplayMonth(monthIndex);
+                    setOpenSelector(null);
+                  }}>
+                  <Text
+                    style={[
+                      styles.calendarSelectorItemText,
+                      monthIndex === month && styles.calendarSelectorItemTextActive,
+                    ]}>
+                    {monthLabel}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+        </View>
+      </View>
       <View style={styles.weekdayRow}>
         {weekdays.map((weekday) => (
           <Text key={weekday} style={styles.weekdayText}>
@@ -931,7 +1031,7 @@ function SavedPlaceCard({ place, onPress }: { place: SavedDatePlace; onPress: ()
   return (
     <Pressable style={styles.savedCard} onPress={onPress}>
       {place.coverPhotoUri ? (
-        <Image source={{ uri: place.coverPhotoUri }} style={styles.savedCardImage} />
+        <Image source={{ uri: place.coverPhotoUri }} style={styles.savedCardImage} resizeMode="cover" />
       ) : (
         <View style={styles.savedCardImagePlaceholder}>
           <Text style={styles.savedCardImagePlaceholderText}>사진 없음</Text>
@@ -966,6 +1066,10 @@ function getOrderedPhotoUris(place: SavedDatePlace) {
   }
 
   return [place.coverPhotoUri, ...photoUris.filter((uri) => uri !== place.coverPhotoUri)];
+}
+
+function getYearOptions(centerYear: number) {
+  return Array.from({ length: 11 }, (_, index) => centerYear - 5 + index);
 }
 
 async function copyPhotoToAppStorage(uri: string, index: number) {
@@ -1065,11 +1169,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F7F4EF',
   },
-  mainScreen: {
+  mainScreenScroll: {
     flex: 1,
+  },
+  mainScreen: {
     padding: 18,
     gap: 14,
-    overflow: 'hidden',
+    paddingBottom: 28,
   },
   keyboardView: {
     flex: 1,
@@ -1273,11 +1379,69 @@ const styles = StyleSheet.create({
   },
   calendar: {
     gap: 8,
+    zIndex: 30,
   },
-  calendarTitle: {
+  calendarSelectorRow: {
+    flexDirection: 'row',
+    gap: 8,
+    zIndex: 40,
+  },
+  calendarSelectorGroup: {
+    position: 'relative',
+    flex: 1,
+    zIndex: 40,
+  },
+  calendarSelectorButton: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(222, 212, 201, 0.78)',
+    backgroundColor: 'rgba(251, 250, 247, 0.68)',
+    paddingHorizontal: 12,
+  },
+  calendarSelectorText: {
     color: '#211D1A',
     fontSize: 14,
+    fontWeight: '900',
+  },
+  calendarSelectorChevron: {
+    color: '#625850',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  calendarSelectorMenu: {
+    position: 'absolute',
+    top: 48,
+    left: 0,
+    right: 0,
+    zIndex: 60,
+    maxHeight: 238,
+    overflow: 'hidden',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E7DED4',
+    backgroundColor: 'rgba(255, 255, 255, 0.96)',
+  },
+  calendarSelectorItem: {
+    minHeight: 38,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1E9DE',
+  },
+  calendarSelectorItemActive: {
+    backgroundColor: '#EDF3FF',
+  },
+  calendarSelectorItemText: {
+    color: '#3E3833',
+    fontSize: 13,
     fontWeight: '800',
+  },
+  calendarSelectorItemTextActive: {
+    color: '#276EF1',
   },
   weekdayRow: {
     flexDirection: 'row',
@@ -1327,11 +1491,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   bottomDock: {
-    flexGrow: 1,
-    flexShrink: 1,
-    justifyContent: 'flex-end',
     gap: 12,
-    minHeight: 0,
   },
   savedCardRow: {
     gap: 12,
@@ -1630,12 +1790,15 @@ const styles = StyleSheet.create({
   },
   photoTile: {
     width: 104,
-    height: 116,
+    height: 104,
     overflow: 'hidden',
     borderRadius: 10,
     borderWidth: 2,
     borderColor: '#ECE2D8',
     backgroundColor: '#F3ECE4',
+  },
+  photoTileCoverButton: {
+    flex: 1,
   },
   coverPhotoTile: {
     borderColor: '#276EF1',
@@ -1643,6 +1806,23 @@ const styles = StyleSheet.create({
   photoImage: {
     width: '100%',
     height: '100%',
+  },
+  photoDeleteButton: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 13,
+    backgroundColor: 'rgba(33,29,26,0.72)',
+  },
+  photoDeleteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '900',
+    lineHeight: 22,
   },
   coverBadge: {
     position: 'absolute',
@@ -1748,6 +1928,10 @@ const styles = StyleSheet.create({
     height: 260,
     backgroundColor: '#EEE7DF',
   },
+  detailImageButton: {
+    width: '100%',
+    height: '100%',
+  },
   detailImage: {
     width: '100%',
     height: '100%',
@@ -1800,6 +1984,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#EEE7DF',
+  },
+  fullScreenPhotoOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.92)',
+    padding: 18,
+  },
+  fullScreenPhoto: {
+    width: '100%',
+    height: '82%',
+  },
+  fullScreenPhotoClose: {
+    position: 'absolute',
+    top: 58,
+    right: 18,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  fullScreenPhotoCloseText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
   },
   detailContent: {
     padding: 18,
