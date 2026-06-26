@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "DateMap",
-    "slug": "datemap",
+    "name": "DearMap",
+    "slug": "dearmap",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "datemap",
+    "scheme": "dearmap",
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.datemap",
@@ -22,7 +22,7 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/icon.png"
     },
     "plugins": [
       [
@@ -47,7 +47,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "DateMap uses your location only when you choose to find or save a date place.",
+          "locationWhenInUsePermission": "DearMap uses your location only when you choose to find or save a date place.",
           "isIosBackgroundLocationEnabled": false,
           "isAndroidBackgroundLocationEnabled": false
         }
@@ -55,7 +55,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "DateMap accesses photos only when you attach a date memory.",
+          "photosPermission": "DearMap accesses photos only when you attach a date memory.",
           "cameraPermission": false,
           "microphonePermission": false
         }
@@ -71,7 +71,7 @@
         "expo-secure-store",
         {
           "configureAndroidBackup": true,
-          "faceIDPermission": "Allow DateMap to protect future login sessions with Face ID."
+          "faceIDPermission": "Allow DearMap to protect future login sessions with Face ID."
         }
       ],
       [

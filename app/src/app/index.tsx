@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { DateMapView } from '@/components/map/date-map-view';
+import { DearMapView } from '@/components/map/date-map-view';
 import { SavedPlacesMap } from '@/components/map/saved-places-map';
 import {
   countDateCards,
@@ -435,7 +435,7 @@ export default function HomeScreen() {
           <View style={styles.brandBlock}>
             <Image source={dateMapLogo} style={styles.headerLogo} />
             <View style={styles.brandText}>
-              <Text style={[styles.label, isDarkMode && styles.labelDark]}>DateMap</Text>
+              <Text style={[styles.label, isDarkMode && styles.labelDark]}>DearMap</Text>
               <Text style={[styles.title, isDarkMode && styles.titleDark]}>우리의 데이트 지도</Text>
             </View>
           </View>
@@ -641,7 +641,7 @@ export default function HomeScreen() {
               </Section>
 
               <View style={styles.mapPanel}>
-                <DateMapView selectedCoord={selectedCoord} onSelectCoord={setSelectedCoord} />
+                <DearMapView selectedCoord={selectedCoord} onSelectCoord={setSelectedCoord} />
               </View>
 
               <Section>
