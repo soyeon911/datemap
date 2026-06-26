@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { DearMapView } from '@/components/map/date-map-view';
+import { DateMapView } from '@/components/map/date-map-view';
 import { SavedPlacesMap } from '@/components/map/saved-places-map';
 import {
   countDateCards,
@@ -45,7 +45,7 @@ type FilterPreset = 'all' | 'this_week' | 'this_month' | 'last_30_days';
 const today = new Date().toISOString().slice(0, 10);
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
 const monthLabels = Array.from({ length: 12 }, (_, index) => `${index + 1}월`);
-const dateMapLogo = require('@/assets/images/datemap-logo.png');
+const dateMapLogo = require('@/assets/images/splash-icon.png');
 const filterPresetLabels: Record<FilterPreset, string> = {
   all: '전체 기간',
   this_week: '이번 주',
@@ -435,8 +435,8 @@ export default function HomeScreen() {
           <View style={styles.brandBlock}>
             <Image source={dateMapLogo} style={styles.headerLogo} />
             <View style={styles.brandText}>
-              <Text style={[styles.label, isDarkMode && styles.labelDark]}>DearMap</Text>
-              <Text style={[styles.title, isDarkMode && styles.titleDark]}>우리의 데이트 지도</Text>
+              <Text style={[styles.label, isDarkMode && styles.labelDark]}>데이트했던 장소와 그날의 추억을 함께 보관하는 지도</Text>
+              <Text style={[styles.title, isDarkMode && styles.titleDark]}>DearMap</Text>
             </View>
           </View>
           <View style={styles.headerActions}>
@@ -457,7 +457,7 @@ export default function HomeScreen() {
         <View style={[styles.mainMapPanel, isDarkMode && styles.panelDark]}>
           <View style={styles.mapTopBar}>
             <View>
-              <TextSectionTitle>대한민국 방문 지도</TextSectionTitle>
+              <TextSectionTitle>방문 지도</TextSectionTitle>
               <TextBody>{filteredPlaces.length}곳의 기록</TextBody>
             </View>
             <Pressable
@@ -641,7 +641,7 @@ export default function HomeScreen() {
               </Section>
 
               <View style={styles.mapPanel}>
-                <DearMapView selectedCoord={selectedCoord} onSelectCoord={setSelectedCoord} />
+                <DateMapView selectedCoord={selectedCoord} onSelectCoord={setSelectedCoord} />
               </View>
 
               <Section>
