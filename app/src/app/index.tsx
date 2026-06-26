@@ -1,5 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { SymbolView } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -24,8 +25,10 @@ import {
   createDateCard,
   deleteDatePlace,
   getSavedDatePlaces,
+  updateDatePlace,
   type SavedDatePlace,
 } from '@/db/date-cards';
+import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 
 type DatabaseState = 'checking' | 'ready' | 'failed';
 type SelectedCoord = {
@@ -55,6 +58,12 @@ export default function HomeScreen() {
   const [selectedCoord, setSelectedCoord] = useState<SelectedCoord | null>(null);
   const [date, setDate] = useState(today);
   const [placeName, setPlaceName] = useState('');
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
+  const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
+  const [placeSearchQuery, setPlaceSearchQuery] = useState('');
+  const [placeSearchResults, setPlaceSearchResults] = useState<NaverPlaceSearchResult[]>([]);
+  const [placeSearchMessage, setPlaceSearchMessage] = useState<string | null>(null);
+  const [isSearchingPlace, setIsSearchingPlace] = useState(false);
   const [photos, setPhotos] = useState<SelectedPhoto[]>([]);
   const [coverPhotoUri, setCoverPhotoUri] = useState<string | null>(null);
   const [oneLineDiary, setOneLineDiary] = useState('');
@@ -70,6 +79,8 @@ export default function HomeScreen() {
   const [datePickerMode, setDatePickerMode] = useState<DatePickerMode>('range');
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [selectedSavedPlace, setSelectedSavedPlace] = useState<SavedDatePlace | null>(null);
+  const [editingDatePlace, setEditingDatePlace] = useState<SavedDatePlace | null>(null);
+  const [detailPhotoIndex, setDetailPhotoIndex] = useState(0);
   const cardScrollRef = useRef<ScrollView | null>(null);
   const cardScrollIndexRef = useRef(0);
 
@@ -113,6 +124,11 @@ export default function HomeScreen() {
     return filterPresetLabels[filterPreset];
   }, [filterEndDate, filterPreset, filterStartDate]);
 
+  const detailPhotoUris = useMemo(
+    () => (selectedSavedPlace ? getOrderedPhotoUris(selectedSavedPlace) : []),
+    [selectedSavedPlace]
+  );
+
   useEffect(() => {
     let isMounted = true;
 
@@ -155,6 +171,18 @@ export default function HomeScreen() {
     return () => clearInterval(timer);
   }, [filteredPlaces.length]);
 
+  useEffect(() => {
+    if (!selectedSavedPlace || detailPhotoUris.length < 2) {
+      return;
+    }
+
+    const timer = setInterval(() => {
+      setDetailPhotoIndex((currentIndex) => (currentIndex + 1) % detailPhotoUris.length);
+    }, 3200);
+
+    return () => clearInterval(timer);
+  }, [detailPhotoUris.length, selectedSavedPlace]);
+
   async function refreshDatePlaces() {
     const [count, places] = await Promise.all([countDateCards(db), getSavedDatePlaces(db)]);
     setDatePlaceCount(count);
@@ -165,17 +193,44 @@ export default function HomeScreen() {
   function openAddPlaceModal() {
     setDate(today);
     setPlaceName('');
+    setSelectedPlaceId(null);
+    setSelectedAddress(null);
+    setPlaceSearchQuery('');
+    setPlaceSearchResults([]);
+    setPlaceSearchMessage(null);
     setSelectedCoord(null);
     setPhotos([]);
     setCoverPhotoUri(null);
     setOneLineDiary('');
     setHashtagText('');
     setSaveMessage(null);
+    setEditingDatePlace(null);
     setIsEditorVisible(true);
   }
 
   function closeAddPlaceModal() {
     setIsEditorVisible(false);
+    setEditingDatePlace(null);
+  }
+
+  function openEditPlaceModal(place: SavedDatePlace) {
+    setEditingDatePlace(place);
+    setDate(place.date);
+    setPlaceName(place.placeName);
+    setSelectedPlaceId(null);
+    setSelectedAddress(place.address);
+    setPlaceSearchQuery(place.placeName);
+    setPlaceSearchResults([]);
+    setPlaceSearchMessage(null);
+    setSelectedCoord({ latitude: place.latitude, longitude: place.longitude });
+    const orderedPhotoUris = getOrderedPhotoUris(place);
+    setPhotos(orderedPhotoUris.map((uri) => ({ uri })));
+    setCoverPhotoUri(place.coverPhotoUri ?? orderedPhotoUris[0] ?? null);
+    setOneLineDiary(place.oneLineDiary ?? '');
+    setHashtagText(place.hashtags.map((tag) => `#${tag}`).join(' '));
+    setSaveMessage(null);
+    setSelectedSavedPlace(null);
+    setIsEditorVisible(true);
   }
 
   async function pickPhotos() {
@@ -188,8 +243,13 @@ export default function HomeScreen() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsMultipleSelection: true,
+      allowsEditing: false,
       mediaTypes: ['images'],
+      selectionLimit: 0,
+      orderedSelection: true,
       quality: 0.85,
+      preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+      presentationStyle: ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN,
     });
 
     if (result.canceled) {
@@ -224,8 +284,10 @@ export default function HomeScreen() {
       return;
     }
 
-    await createDateCard(db, {
+    const nextPlaceInput = {
       placeName: trimmedPlaceName,
+      placeId: selectedPlaceId,
+      address: selectedAddress,
       latitude: selectedCoord.latitude,
       longitude: selectedCoord.longitude,
       date,
@@ -233,10 +295,17 @@ export default function HomeScreen() {
       hashtags,
       photoUris: photos.map((photo) => photo.uri),
       coverPhotoUri,
-    });
+    };
+
+    if (editingDatePlace) {
+      await updateDatePlace(db, editingDatePlace.id, nextPlaceInput);
+    } else {
+      await createDateCard(db, nextPlaceInput);
+    }
 
     await refreshDatePlaces();
     setSaveMessage(null);
+    setEditingDatePlace(null);
     setIsEditorVisible(false);
   }
 
@@ -314,6 +383,46 @@ export default function HomeScreen() {
     setFilterEndDate(range.end);
   }
 
+  function openPlaceDetail(place: SavedDatePlace) {
+    setDetailPhotoIndex(0);
+    setSelectedSavedPlace(place);
+  }
+
+  async function searchPlaces() {
+    const query = placeSearchQuery.trim() || placeName.trim();
+
+    if (!query) {
+      setPlaceSearchMessage('검색할 장소 이름을 입력하세요.');
+      return;
+    }
+
+    setIsSearchingPlace(true);
+    setPlaceSearchMessage(null);
+
+    try {
+      const results = await searchNaverPlaces(query);
+      setPlaceSearchResults(results);
+      setPlaceSearchMessage(results.length > 0 ? `${results.length}개의 장소를 찾았습니다.` : '검색 결과가 없습니다.');
+    } catch (error) {
+      if (error instanceof Error && error.message === 'PLACE_SEARCH_PROXY_REQUIRED') {
+        setPlaceSearchMessage('장소 검색 프록시 URL이 필요합니다. 직접 장소명 입력과 지도 선택은 계속 사용할 수 있습니다.');
+      } else {
+        setPlaceSearchMessage('장소 검색에 실패했습니다. 잠시 후 다시 시도하세요.');
+      }
+      setPlaceSearchResults([]);
+    } finally {
+      setIsSearchingPlace(false);
+    }
+  }
+
+  function selectSearchedPlace(result: NaverPlaceSearchResult) {
+    setSelectedPlaceId(result.id);
+    setSelectedAddress(result.address);
+    setPlaceName(result.name);
+    setSelectedCoord({ latitude: result.latitude, longitude: result.longitude });
+    setPlaceSearchMessage(`${result.name}을 선택했습니다.`);
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.mainScreen}>
@@ -345,7 +454,9 @@ export default function HomeScreen() {
               places={filteredPlaces}
               onSelectPlace={(place) => {
                 const matchedPlace = filteredPlaces.find((savedPlace) => savedPlace.id === place.id);
-                setSelectedSavedPlace(matchedPlace ?? null);
+                if (matchedPlace) {
+                  openPlaceDetail(matchedPlace);
+                }
               }}
             />
             {filteredPlaces.length === 0 ? (
@@ -369,7 +480,13 @@ export default function HomeScreen() {
               accessibilityLabel="날짜 필터 열기"
               style={styles.calendarIconButton}
               onPress={() => setIsDatePickerVisible(true)}>
-              <Text style={styles.calendarIconText}>▣</Text>
+              <SymbolView
+                name="calendar"
+                size={23}
+                tintColor="#FFFFFF"
+                weight="semibold"
+                fallback={<Text style={styles.calendarIconText}>□</Text>}
+              />
             </Pressable>
             {isFilterDropdownVisible ? (
               <View style={styles.filterDropdownMenu}>
@@ -391,7 +508,7 @@ export default function HomeScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.savedCardRow}>
               {filteredPlaces.map((place) => (
-                <SavedPlaceCard key={place.id} place={place} onPress={() => setSelectedSavedPlace(place)} />
+                <SavedPlaceCard key={place.id} place={place} onPress={() => openPlaceDetail(place)} />
               ))}
             </ScrollView>
           ) : (
@@ -490,8 +607,8 @@ export default function HomeScreen() {
             style={styles.keyboardView}>
             <View style={styles.modalHeader}>
               <View>
-                <TextLabel>새 데이트 장소</TextLabel>
-                <TextTitle>장소 기록 추가</TextTitle>
+                <TextLabel>{editingDatePlace ? '데이트 장소 수정' : '새 데이트 장소'}</TextLabel>
+                <TextTitle>{editingDatePlace ? '장소 기록 수정' : '장소 기록 추가'}</TextTitle>
               </View>
               <Pressable style={styles.modalCloseButton} onPress={closeAddPlaceModal}>
                 <Text style={styles.modalCloseButtonText}>닫기</Text>
@@ -510,14 +627,49 @@ export default function HomeScreen() {
 
               <Section>
                 <TextSectionTitle>장소 검색</TextSectionTitle>
-                <TextBody>검색 API 연결 전까지 장소 이름을 직접 입력하고 지도에서 위치를 선택합니다.</TextBody>
+                <TextBody>검색 결과를 선택하면 장소 이름, 주소, 좌표가 자동으로 입력됩니다.</TextBody>
+                <View style={styles.searchRow}>
+                  <TextInput
+                    value={placeSearchQuery}
+                    onChangeText={setPlaceSearchQuery}
+                    placeholder="가게 이름이나 장소 이름 검색"
+                    placeholderTextColor="#9B9187"
+                    style={[styles.input, styles.searchInput]}
+                    returnKeyType="search"
+                    onSubmitEditing={() => {
+                      void searchPlaces();
+                    }}
+                  />
+                  <Pressable style={styles.searchButton} onPress={() => void searchPlaces()}>
+                    <Text style={styles.searchButtonText}>{isSearchingPlace ? '검색중' : '검색'}</Text>
+                  </Pressable>
+                </View>
+                {placeSearchMessage ? <Text style={styles.searchMessage}>{placeSearchMessage}</Text> : null}
+                {placeSearchResults.length > 0 ? (
+                  <View style={styles.searchResultList}>
+                    {placeSearchResults.map((result) => (
+                      <Pressable
+                        key={result.id}
+                        style={[
+                          styles.searchResultItem,
+                          selectedPlaceId === result.id && styles.searchResultItemSelected,
+                        ]}
+                        onPress={() => selectSearchedPlace(result)}>
+                        <Text style={styles.searchResultTitle}>{result.name}</Text>
+                        {result.address ? <Text style={styles.searchResultAddress}>{result.address}</Text> : null}
+                        {result.category ? <Text style={styles.searchResultCategory}>{result.category}</Text> : null}
+                      </Pressable>
+                    ))}
+                  </View>
+                ) : null}
                 <TextInput
                   value={placeName}
                   onChangeText={setPlaceName}
-                  placeholder="가게 이름이나 장소 이름"
+                  placeholder="선택된 장소 이름 또는 직접 입력"
                   placeholderTextColor="#9B9187"
                   style={styles.input}
                 />
+                {selectedAddress ? <TextBody>주소: {selectedAddress}</TextBody> : null}
                 {selectedCoord ? (
                   <TextBody>
                     선택 위치: {selectedCoord.latitude.toFixed(5)}, {selectedCoord.longitude.toFixed(5)}
@@ -532,7 +684,7 @@ export default function HomeScreen() {
                     <TextSecondaryButton>사진 선택</TextSecondaryButton>
                   </Pressable>
                 </View>
-                <TextBody>여러 장을 선택하고, 한 장을 대표 사진으로 지정합니다.</TextBody>
+                <TextBody>사진을 한 장씩 추가하고, 한 장을 대표 사진으로 지정합니다.</TextBody>
                 {photos.length > 0 ? (
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photoRow}>
                     {photos.map((photo) => {
@@ -597,7 +749,7 @@ export default function HomeScreen() {
 
             <View style={styles.modalFooter}>
               <Pressable style={styles.saveButton} onPress={saveDatePlace}>
-                <TextButton>저장하고 돌아가기</TextButton>
+                <TextButton>{editingDatePlace ? '수정하고 돌아가기' : '저장하고 돌아가기'}</TextButton>
               </Pressable>
             </View>
           </KeyboardAvoidingView>
@@ -618,7 +770,7 @@ export default function HomeScreen() {
                 </Pressable>
                 <Pressable
                   style={styles.detailActionButton}
-                  onPress={() => Alert.alert('수정 준비 중', '다음 단계에서 저장된 기록 수정 폼을 연결합니다.')}>
+                  onPress={() => openEditPlaceModal(selectedSavedPlace)}>
                   <Text style={styles.detailActionText}>수정</Text>
                 </Pressable>
                 <Pressable style={styles.detailDeleteButton} onPress={() => confirmDeletePlace(selectedSavedPlace)}>
@@ -626,8 +778,42 @@ export default function HomeScreen() {
                 </Pressable>
               </View>
 
-              {selectedSavedPlace.coverPhotoUri ? (
-                <Image source={{ uri: selectedSavedPlace.coverPhotoUri }} style={styles.detailImage} />
+              {detailPhotoUris.length > 0 ? (
+                <View style={styles.detailImageFrame}>
+                  <Image source={{ uri: detailPhotoUris[detailPhotoIndex] }} style={styles.detailImage} />
+                  {detailPhotoUris.length > 1 ? (
+                    <>
+                      <Pressable
+                        accessibilityLabel="이전 사진"
+                        style={[styles.photoNavButton, styles.photoNavButtonLeft]}
+                        onPress={() =>
+                          setDetailPhotoIndex(
+                            (currentIndex) => (currentIndex - 1 + detailPhotoUris.length) % detailPhotoUris.length
+                          )
+                        }>
+                        <Text style={styles.photoNavButtonText}>‹</Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityLabel="다음 사진"
+                        style={[styles.photoNavButton, styles.photoNavButtonRight]}
+                        onPress={() =>
+                          setDetailPhotoIndex((currentIndex) => (currentIndex + 1) % detailPhotoUris.length)
+                        }>
+                        <Text style={styles.photoNavButtonText}>›</Text>
+                      </Pressable>
+                      <View style={styles.photoPager}>
+                        {detailPhotoUris.map((uri, index) => (
+                          <Pressable
+                            key={`${uri}_${index}`}
+                            accessibilityLabel={`${index + 1}번째 사진 보기`}
+                            style={[styles.photoPagerDot, index === detailPhotoIndex && styles.photoPagerDotActive]}
+                            onPress={() => setDetailPhotoIndex(index)}
+                          />
+                        ))}
+                      </View>
+                    </>
+                  ) : null}
+                </View>
               ) : (
                 <View style={styles.detailImagePlaceholder}>
                   <Text style={styles.savedCardImagePlaceholderText}>대표 사진 없음</Text>
@@ -679,9 +865,17 @@ function CalendarPicker({
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
   const cells = [
-    ...Array.from({ length: firstDay }, (_, index) => ({ key: `empty_${index}`, day: null })),
+    ...Array.from({ length: firstDay }, (_, index) => ({ key: `empty_start_${index}`, day: null })),
     ...Array.from({ length: daysInMonth }, (_, index) => ({ key: `day_${index + 1}`, day: index + 1 })),
   ];
+  const trailingEmptyCellCount = (7 - (cells.length % 7)) % 7;
+  const paddedCells = [
+    ...cells,
+    ...Array.from({ length: trailingEmptyCellCount }, (_, index) => ({ key: `empty_end_${index}`, day: null })),
+  ];
+  const calendarWeeks = Array.from({ length: Math.ceil(paddedCells.length / 7) }, (_, weekIndex) =>
+    paddedCells.slice(weekIndex * 7, weekIndex * 7 + 7)
+  );
 
   return (
     <View style={styles.calendar}>
@@ -696,32 +890,38 @@ function CalendarPicker({
         ))}
       </View>
       <View style={styles.calendarGrid}>
-        {cells.map((cell) => {
-          if (!cell.day) {
-            return <View key={cell.key} style={styles.calendarCell} />;
-          }
+        {calendarWeeks.map((week, weekIndex) => (
+          <View key={`week_${weekIndex}`} style={styles.calendarWeekRow}>
+            {week.map((cell) => {
+              if (!cell.day) {
+                return <View key={cell.key} style={styles.calendarCell} />;
+              }
 
-          const cellDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(cell.day).padStart(2, '0')}`;
-          const isSelected = cellDate === safeSelectedDate;
-          const isInRange = Boolean(
-            rangeStartDate && rangeEndDate && cellDate >= rangeStartDate && cellDate <= rangeEndDate
-          );
-          const isActiveDate = activeDates.includes(cellDate);
+              const cellDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(cell.day).padStart(2, '0')}`;
+              const isSelected = cellDate === safeSelectedDate;
+              const isInRange = Boolean(
+                rangeStartDate && rangeEndDate && cellDate >= rangeStartDate && cellDate <= rangeEndDate
+              );
+              const isActiveDate = activeDates.includes(cellDate);
 
-          return (
-            <Pressable
-              key={cell.key}
-              style={[
-                styles.calendarCell,
-                isInRange && styles.calendarCellInRange,
-                isSelected && styles.calendarCellSelected,
-              ]}
-              onPress={() => onSelectDate(cellDate)}>
-              <Text style={[styles.calendarDayText, isSelected && styles.calendarDayTextSelected]}>{cell.day}</Text>
-              {isActiveDate ? <View style={[styles.activeDateDot, isSelected && styles.activeDateDotSelected]} /> : null}
-            </Pressable>
-          );
-        })}
+              return (
+                <Pressable
+                  key={cell.key}
+                  style={[
+                    styles.calendarCell,
+                    isInRange && styles.calendarCellInRange,
+                    isSelected && styles.calendarCellSelected,
+                  ]}
+                  onPress={() => onSelectDate(cellDate)}>
+                  <Text style={[styles.calendarDayText, isSelected && styles.calendarDayTextSelected]}>{cell.day}</Text>
+                  {isActiveDate ? (
+                    <View style={[styles.activeDateDot, isSelected && styles.activeDateDotSelected]} />
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
       </View>
     </View>
   );
@@ -740,6 +940,9 @@ function SavedPlaceCard({ place, onPress }: { place: SavedDatePlace; onPress: ()
       <View style={styles.savedCardContent}>
         <Text style={styles.savedCardTitle}>{place.placeName}</Text>
         <Text style={styles.savedCardDate}>{place.date}</Text>
+        <Text style={styles.savedCardDiary} numberOfLines={2}>
+          {place.oneLineDiary || '한 줄 일기가 없습니다.'}
+        </Text>
         <Text style={styles.savedCardMeta}>사진 {place.photoCount}장</Text>
         {place.hashtags.length > 0 ? (
           <View style={styles.savedHashtagRow}>
@@ -753,6 +956,16 @@ function SavedPlaceCard({ place, onPress }: { place: SavedDatePlace; onPress: ()
       </View>
     </Pressable>
   );
+}
+
+function getOrderedPhotoUris(place: SavedDatePlace) {
+  const photoUris = place.photoUris.length > 0 ? place.photoUris : place.coverPhotoUri ? [place.coverPhotoUri] : [];
+
+  if (!place.coverPhotoUri) {
+    return photoUris;
+  }
+
+  return [place.coverPhotoUri, ...photoUris.filter((uri) => uri !== place.coverPhotoUri)];
 }
 
 async function copyPhotoToAppStorage(uri: string, index: number) {
@@ -856,6 +1069,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 18,
     gap: 14,
+    overflow: 'hidden',
   },
   keyboardView: {
     flex: 1,
@@ -889,8 +1103,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   mainMapPanel: {
-    flex: 1,
-    minHeight: 410,
+    height: 426,
+    flexGrow: 0,
+    flexShrink: 0,
     borderRadius: 12,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
@@ -935,8 +1150,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   mainNaverMapPanel: {
-    flex: 1,
-    minHeight: 300,
+    height: 250,
+    flexShrink: 0,
     overflow: 'hidden',
     borderRadius: 10,
     backgroundColor: '#EAF1EC',
@@ -1005,7 +1220,7 @@ const styles = StyleSheet.create({
   },
   calendarIconText: {
     color: '#FFFFFF',
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '900',
   },
   filterDropdownMenu: {
@@ -1075,12 +1290,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   calendarGrid: {
+    gap: 4,
+  },
+  calendarWeekRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
   },
   calendarCell: {
-    width: `${100 / 7}%`,
-    aspectRatio: 1.25,
+    flex: 1,
+    minHeight: 38,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1110,14 +1327,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
   bottomDock: {
+    flexGrow: 1,
+    flexShrink: 1,
+    justifyContent: 'flex-end',
     gap: 12,
+    minHeight: 0,
   },
   savedCardRow: {
     gap: 12,
     paddingRight: 18,
   },
   savedCard: {
-    width: 266,
+    width: 286,
+    height: 272,
     overflow: 'hidden',
     borderRadius: 12,
     backgroundColor: '#FFFFFF',
@@ -1126,10 +1348,10 @@ const styles = StyleSheet.create({
   },
   savedCardImage: {
     width: '100%',
-    height: 132,
+    height: 116,
   },
   savedCardImagePlaceholder: {
-    height: 132,
+    height: 116,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#EEE7DF',
@@ -1140,8 +1362,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   savedCardContent: {
+    flex: 1,
     padding: 13,
-    gap: 8,
+    gap: 7,
   },
   savedCardTitle: {
     color: '#211D1A',
@@ -1152,6 +1375,13 @@ const styles = StyleSheet.create({
     color: '#7C7065',
     fontSize: 13,
     fontWeight: '700',
+  },
+  savedCardDiary: {
+    minHeight: 36,
+    color: '#3E3833',
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
   },
   savedCardMeta: {
     color: '#8B8076',
@@ -1313,6 +1543,64 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 15,
   },
+  searchRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+  },
+  searchButton: {
+    minWidth: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: '#276EF1',
+    paddingHorizontal: 12,
+  },
+  searchButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  searchMessage: {
+    color: '#276173',
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
+  },
+  searchResultList: {
+    overflow: 'hidden',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E7DED4',
+    backgroundColor: '#FFFFFF',
+  },
+  searchResultItem: {
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1E9DE',
+  },
+  searchResultItemSelected: {
+    backgroundColor: '#EDF3FF',
+  },
+  searchResultTitle: {
+    color: '#211D1A',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  searchResultAddress: {
+    color: '#625850',
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  searchResultCategory: {
+    color: '#276173',
+    fontSize: 12,
+    fontWeight: '800',
+  },
   diaryInput: {
     minHeight: 92,
     textAlignVertical: 'top',
@@ -1455,9 +1743,57 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
+  detailImageFrame: {
+    position: 'relative',
+    height: 260,
+    backgroundColor: '#EEE7DF',
+  },
   detailImage: {
     width: '100%',
-    height: 260,
+    height: '100%',
+  },
+  photoNavButton: {
+    position: 'absolute',
+    top: '44%',
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+  },
+  photoNavButtonLeft: {
+    left: 12,
+  },
+  photoNavButtonRight: {
+    right: 12,
+  },
+  photoNavButtonText: {
+    color: '#211D1A',
+    fontSize: 28,
+    fontWeight: '800',
+    lineHeight: 30,
+  },
+  photoPager: {
+    position: 'absolute',
+    right: 14,
+    bottom: 12,
+    flexDirection: 'row',
+    gap: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(33,29,26,0.28)',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  photoPagerDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+  },
+  photoPagerDotActive: {
+    width: 16,
+    backgroundColor: '#FFFFFF',
   },
   detailImagePlaceholder: {
     height: 220,

@@ -34,6 +34,8 @@ export type CreateDateCardInput = {
   coverPhotoUri?: string | null;
 };
 
+export type UpdateDatePlaceInput = CreateDateCardInput;
+
 export type SavedDatePlace = {
   id: string;
   placeName: string;
@@ -44,6 +46,7 @@ export type SavedDatePlace = {
   oneLineDiary: string | null;
   hashtags: string[];
   coverPhotoUri: string | null;
+  photoUris: string[];
   photoCount: number;
   yearMonth: string;
 };
@@ -187,6 +190,7 @@ export async function getSavedDatePlaces(db: SQLiteDatabase, limit = 30) {
     oneLineDiary: string | null;
     hashtagsJson: string;
     coverPhotoUri: string | null;
+    photoUrisJoined: string | null;
     photoCount: number;
     yearMonth: string;
   }>(
@@ -200,6 +204,7 @@ export async function getSavedDatePlaces(db: SQLiteDatabase, limit = 30) {
       date_places.one_line_diary AS oneLineDiary,
       date_places.hashtags_json AS hashtagsJson,
       date_places.cover_photo_uri AS coverPhotoUri,
+      GROUP_CONCAT(date_photos.local_uri, '||') AS photoUrisJoined,
       COUNT(date_photos.id) AS photoCount,
       date_entries.year_month AS yearMonth
     FROM date_places
@@ -214,7 +219,92 @@ export async function getSavedDatePlaces(db: SQLiteDatabase, limit = 30) {
   return rows.map((row) => ({
     ...row,
     hashtags: parseJsonArray(row.hashtagsJson),
+    photoUris: parseJoinedUris(row.photoUrisJoined),
   }));
+}
+
+export async function updateDatePlace(db: SQLiteDatabase, datePlaceId: string, input: UpdateDatePlaceInput) {
+  const now = new Date().toISOString();
+  const date = new Date(`${input.date}T00:00:00`);
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const weekOfYear = getWeekOfYear(date);
+  const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
+  const nextDateEntryId = `entry_${input.date}`;
+  const hashtags = input.hashtags ?? [];
+  const normalizedSearchText = [input.placeName, input.address, input.oneLineDiary, ...hashtags]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+    .toLowerCase();
+
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `INSERT OR IGNORE INTO date_entries (
+        id,
+        owner_user_id,
+        couple_id,
+        date,
+        year,
+        month,
+        week_of_year,
+        year_month,
+        summary,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [nextDateEntryId, null, null, input.date, year, month, weekOfYear, yearMonth, null, now, now]
+    );
+
+    await db.runAsync(
+      `UPDATE date_places
+      SET
+        date_entry_id = ?,
+        place_id = ?,
+        place_name = ?,
+        address = ?,
+        latitude = ?,
+        longitude = ?,
+        one_line_diary = ?,
+        hashtags_json = ?,
+        cover_photo_uri = ?,
+        normalized_search_text = ?,
+        sync_status = ?,
+        updated_at = ?
+      WHERE id = ?`,
+      [
+        nextDateEntryId,
+        input.placeId ?? null,
+        input.placeName,
+        input.address ?? null,
+        input.latitude,
+        input.longitude,
+        input.oneLineDiary ?? null,
+        JSON.stringify(hashtags),
+        input.coverPhotoUri ?? input.photoUris?.[0] ?? null,
+        normalizedSearchText,
+        'local_only',
+        now,
+        datePlaceId,
+      ]
+    );
+
+    await db.runAsync('DELETE FROM date_photos WHERE date_place_id = ?', [datePlaceId]);
+
+    for (const [index, localUri] of (input.photoUris ?? []).entries()) {
+      await db.runAsync(
+        `INSERT INTO date_photos (
+          id,
+          date_place_id,
+          local_uri,
+          remote_url,
+          sort_order,
+          created_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [`photo_${Date.now()}_${index}`, datePlaceId, localUri, null, index + 1, now]
+      );
+    }
+  });
 }
 
 export async function deleteDatePlace(db: SQLiteDatabase, datePlaceId: string) {
@@ -222,6 +312,14 @@ export async function deleteDatePlace(db: SQLiteDatabase, datePlaceId: string) {
     await db.runAsync('DELETE FROM date_photos WHERE date_place_id = ?', [datePlaceId]);
     await db.runAsync('DELETE FROM date_places WHERE id = ?', [datePlaceId]);
   });
+}
+
+function parseJoinedUris(value: string | null) {
+  if (!value) {
+    return [];
+  }
+
+  return value.split('||').filter(Boolean);
 }
 
 function parseJsonArray(value: string) {

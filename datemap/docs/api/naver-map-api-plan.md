@@ -137,6 +137,54 @@ iOS를 먼저 구현합니다.
 2. Client Secret이 필요한 API라면 앱에서 직접 호출하지 않고 백엔드 프록시를 만든다.
 3. MVP 초기에는 지도 탭 좌표 저장을 보조 기능으로 유지한다.
 
+현재 앱 구현:
+
+- 앱은 `EXPO_PUBLIC_NAVER_PLACE_SEARCH_ENDPOINT`로 설정된 장소 검색 프록시를 호출한다.
+- 프록시는 `query` 파라미터를 받아 네이버 장소 검색 또는 Geocoding 계열 API를 호출하고, 앱에는 정규화된 장소 목록만 반환한다.
+- 모바일 앱에는 네이버 Client Secret을 넣지 않는다.
+- 프록시가 아직 없으면 장소명 직접 입력과 지도 탭 좌표 선택 흐름을 유지한다.
+
+### Vercel Serverless Function
+
+현재 프록시 구현 위치:
+
+- `api/naver-place-search.ts`
+
+Vercel 환경 변수:
+
+- `NAVER_MAP_CLIENT_ID`: Naver Cloud Platform Maps Client ID
+- `NAVER_MAP_CLIENT_SECRET`: Naver Cloud Platform Maps Client Secret
+- `NAVER_SEARCH_CLIENT_ID`: 선택 사항, NAVER Developers Local Search Client ID
+- `NAVER_SEARCH_CLIENT_SECRET`: 선택 사항, NAVER Developers Local Search Client Secret
+
+앱 환경 변수:
+
+- `EXPO_PUBLIC_NAVER_PLACE_SEARCH_ENDPOINT=https://<vercel-domain>/api/naver-place-search`
+
+동작 방식:
+
+1. `NAVER_SEARCH_CLIENT_ID/SECRET`이 있으면 Local Search로 장소 후보를 찾는다.
+2. 후보의 주소를 Naver Cloud Maps Geocoding으로 변환해 위도/경도를 얻는다.
+3. Local Search 키가 없으면 Naver Cloud Maps Geocoding만으로 `query`를 검색한다.
+4. 앱에는 `id`, `name`, `address`, `latitude`, `longitude`, `category`만 반환한다.
+
+프록시 응답 형식:
+
+```json
+{
+  "results": [
+    {
+      "id": "naver-place-id",
+      "name": "장소 이름",
+      "address": "주소",
+      "latitude": 37.5665,
+      "longitude": 126.978,
+      "category": "카페"
+    }
+  ]
+}
+```
+
 저장해야 하는 검색 결과:
 
 - 외부 장소 ID가 있으면 저장

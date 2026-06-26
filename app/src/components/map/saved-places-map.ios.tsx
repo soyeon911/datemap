@@ -1,5 +1,7 @@
 import { NaverMapMarkerOverlay, NaverMapView } from '@mj-studio/react-native-naver-map';
-import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
+import { StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
+
+const HEART_MARKER_IMAGE = require('@/assets/images/map-heart-marker.png');
 
 export type SavedPlacesMapPlace = {
   id: string;
@@ -33,6 +35,8 @@ export function SavedPlacesMap({ places, style, onSelectPlace }: SavedPlacesMapP
           width={34}
           height={34}
           anchor={{ x: 0.5, y: 0.5 }}
+          image={HEART_MARKER_IMAGE}
+          isForceShowIcon
           caption={{
             text: place.placeName,
             textSize: 11,
@@ -40,11 +44,8 @@ export function SavedPlacesMap({ places, style, onSelectPlace }: SavedPlacesMapP
             haloColor: '#FFFFFF',
             requestedWidth: 88,
           }}
-          onTap={() => onSelectPlace?.(place)}>
-          <Pressable collapsable={false} style={styles.heartMarker}>
-            <Text style={styles.heartText}>♥</Text>
-          </Pressable>
-        </NaverMapMarkerOverlay>
+          onTap={() => onSelectPlace?.(place)}
+        />
       ))}
     </NaverMapView>
   );
@@ -80,25 +81,5 @@ function getMapRegion(places: SavedPlacesMapPlace[]) {
 const styles = StyleSheet.create({
   map: {
     flex: 1,
-  },
-  heartMarker: {
-    width: 34,
-    height: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 17,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#F0A8B2',
-    shadowColor: '#000000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
-  },
-  heartText: {
-    color: '#E84D63',
-    fontSize: 18,
-    fontWeight: '900',
-    lineHeight: 21,
   },
 });
