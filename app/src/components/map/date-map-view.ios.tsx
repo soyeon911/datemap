@@ -3,13 +3,13 @@ import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
-type DearMapViewProps = {
+type DateMapViewProps = {
   style?: StyleProp<ViewStyle>;
   selectedCoord?: Coord | null;
   onSelectCoord?: (coord: Coord) => void;
 };
 
-export function DearMapView({ selectedCoord, onSelectCoord, style }: DearMapViewProps) {
+export function DateMapView({ selectedCoord, onSelectCoord, style }: DateMapViewProps) {
   const [currentCoord, setCurrentCoord] = useState<Coord | null>(null);
   const [focusedCoord, setFocusedCoord] = useState<Coord | null>(null);
   const mapRegion = selectedCoord

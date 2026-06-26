@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
-type DearMapViewProps = {
+type DateMapViewProps = {
   style?: StyleProp<ViewStyle>;
   selectedCoord?: {
     latitude: number;
@@ -14,7 +14,7 @@ const DEFAULT_COORD = {
   longitude: 126.978,
 };
 
-export function DearMapView({ selectedCoord, onSelectCoord, style }: DearMapViewProps) {
+export function DateMapView({ selectedCoord, onSelectCoord, style }: DateMapViewProps) {
   return (
     <View style={[styles.placeholder, style]}>
       <Text style={styles.title}>지도 영역</Text>
