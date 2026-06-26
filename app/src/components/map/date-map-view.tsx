@@ -39,7 +39,7 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   title: {
-    color: '#211D1A',
+    color: '#342725',
     fontSize: 18,
     fontWeight: '800',
   },
@@ -56,12 +56,12 @@ const styles = StyleSheet.create({
   button: {
     alignSelf: 'flex-start',
     borderRadius: 8,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8EFEC',
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
   buttonText: {
-    color: '#276EF1',
+    color: '#A86873',
     fontSize: 13,
     fontWeight: '800',
   },

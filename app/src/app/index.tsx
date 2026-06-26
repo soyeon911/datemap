@@ -45,6 +45,7 @@ type FilterPreset = 'all' | 'this_week' | 'this_month' | 'last_30_days';
 const today = new Date().toISOString().slice(0, 10);
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
 const monthLabels = Array.from({ length: 12 }, (_, index) => `${index + 1}월`);
+const dateMapLogo = require('@/assets/images/datemap-logo.png');
 const filterPresetLabels: Record<FilterPreset, string> = {
   all: '전체 기간',
   this_week: '이번 주',
@@ -83,6 +84,7 @@ export default function HomeScreen() {
   const [editingDatePlace, setEditingDatePlace] = useState<SavedDatePlace | null>(null);
   const [detailPhotoIndex, setDetailPhotoIndex] = useState(0);
   const [fullScreenPhotoUri, setFullScreenPhotoUri] = useState<string | null>(null);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const cardScrollRef = useRef<ScrollView | null>(null);
   const cardScrollIndexRef = useRef(0);
 
@@ -168,7 +170,7 @@ export default function HomeScreen() {
         x: cardScrollIndexRef.current * 298,
         animated: true,
       });
-    }, 3400);
+    }, 7000);
 
     return () => clearInterval(timer);
   }, [filteredPlaces.length]);
@@ -235,11 +237,10 @@ export default function HomeScreen() {
       allowsMultipleSelection: true,
       allowsEditing: false,
       mediaTypes: ['images'],
-      selectionLimit: 0,
+      selectionLimit: 20,
       orderedSelection: true,
       quality: 0.85,
       preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
-      presentationStyle: ImagePicker.UIImagePickerPresentationStyle.FULL_SCREEN,
     });
 
     if (result.canceled) {
@@ -425,22 +426,35 @@ export default function HomeScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={[styles.safeArea, isDarkMode && styles.safeAreaDark]}>
       <ScrollView
         style={styles.mainScreenScroll}
-        contentContainerStyle={styles.mainScreen}
+        contentContainerStyle={[styles.mainScreen, isDarkMode && styles.mainScreenDark]}
         showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <View>
-            <TextLabel>DateMap</TextLabel>
-            <TextTitle>우리의 데이트 지도</TextTitle>
+          <View style={styles.brandBlock}>
+            <Image source={dateMapLogo} style={styles.headerLogo} />
+            <View style={styles.brandText}>
+              <Text style={[styles.label, isDarkMode && styles.labelDark]}>DateMap</Text>
+              <Text style={[styles.title, isDarkMode && styles.titleDark]}>우리의 데이트 지도</Text>
+            </View>
           </View>
-          <View style={styles.statusBadge}>
-            <TextBadge>{databaseState === 'ready' ? `${datePlaceCount} places` : databaseState}</TextBadge>
+          <View style={styles.headerActions}>
+            <View style={styles.statusBadge}>
+              <TextBadge>{databaseState === 'ready' ? `${datePlaceCount} places` : databaseState}</TextBadge>
+            </View>
+            <Pressable
+              accessibilityLabel="다크모드 전환"
+              style={[styles.darkModeButton, isDarkMode && styles.darkModeButtonActive]}
+              onPress={() => setIsDarkMode((current) => !current)}>
+              <Text style={[styles.darkModeButtonText, isDarkMode && styles.darkModeButtonTextActive]}>
+                {isDarkMode ? 'Light' : 'Dark'}
+              </Text>
+            </Pressable>
           </View>
         </View>
 
-        <View style={styles.mainMapPanel}>
+        <View style={[styles.mainMapPanel, isDarkMode && styles.panelDark]}>
           <View style={styles.mapTopBar}>
             <View>
               <TextSectionTitle>대한민국 방문 지도</TextSectionTitle>
@@ -487,7 +501,7 @@ export default function HomeScreen() {
               <SymbolView
                 name="calendar"
                 size={23}
-                tintColor="#FFFFFF"
+                tintColor="#F8EFEC"
                 weight="semibold"
                 fallback={<Text style={styles.calendarIconText}>□</Text>}
               />
@@ -792,8 +806,15 @@ export default function HomeScreen() {
                 <View style={styles.detailImageFrame}>
                   <Pressable
                     style={styles.detailImageButton}
-                    onPress={() => setFullScreenPhotoUri(detailPhotoUris[detailPhotoIndex])}>
-                    <Image source={{ uri: detailPhotoUris[detailPhotoIndex] }} style={styles.detailImage} />
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      setFullScreenPhotoUri(detailPhotoUris[detailPhotoIndex]);
+                    }}>
+                    <Image
+                      source={{ uri: detailPhotoUris[detailPhotoIndex] }}
+                      style={styles.detailImage}
+                      resizeMode="contain"
+                    />
                   </Pressable>
                   {detailPhotoUris.length > 1 ? (
                     <>
@@ -1167,7 +1188,10 @@ function TextSecondaryButton({ children }: { children: ReactNode }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F7F4EF',
+    backgroundColor: '#EADCD8',
+  },
+  safeAreaDark: {
+    backgroundColor: '#171513',
   },
   mainScreenScroll: {
     flex: 1,
@@ -1176,6 +1200,9 @@ const styles = StyleSheet.create({
     padding: 18,
     gap: 14,
     paddingBottom: 28,
+  },
+  mainScreenDark: {
+    backgroundColor: '#171513',
   },
   keyboardView: {
     flex: 1,
@@ -1186,38 +1213,88 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 16,
   },
+  brandBlock: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+  },
+  headerLogo: {
+    width: 46,
+    height: 46,
+    borderRadius: 13,
+  },
+  brandText: {
+    flex: 1,
+  },
+  headerActions: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
   label: {
     color: '#73685C',
     fontSize: 13,
     fontWeight: '700',
   },
+  labelDark: {
+    color: '#C9BDB0',
+  },
   title: {
-    color: '#211D1A',
+    color: '#342725',
     fontSize: 28,
     fontWeight: '800',
     marginTop: 4,
   },
+  titleDark: {
+    color: '#EADCD8',
+  },
   statusBadge: {
     borderRadius: 999,
-    backgroundColor: '#E8F1E9',
+    backgroundColor: '#E6D4D0',
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
   badgeText: {
-    color: '#2E6543',
+    color: '#7C4F58',
     fontSize: 12,
     fontWeight: '800',
+  },
+  darkModeButton: {
+    minWidth: 64,
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#D9CEC1',
+    backgroundColor: 'rgba(255,255,255,0.64)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  darkModeButtonActive: {
+    borderColor: '#534A42',
+    backgroundColor: '#26211D',
+  },
+  darkModeButtonText: {
+    color: '#3E3833',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  darkModeButtonTextActive: {
+    color: '#EADCD8',
   },
   mainMapPanel: {
     height: 426,
     flexGrow: 0,
     flexShrink: 0,
     borderRadius: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8EFEC',
     borderWidth: 1,
-    borderColor: '#E7DED4',
+    borderColor: '#D8C4BE',
     padding: 14,
     gap: 12,
+  },
+  panelDark: {
+    backgroundColor: '#342725',
+    borderColor: '#3A332D',
   },
   mapTopBar: {
     flexDirection: 'row',
@@ -1227,15 +1304,15 @@ const styles = StyleSheet.create({
   },
   clearFilterButton: {
     borderRadius: 999,
-    backgroundColor: '#EEF4F6',
+    backgroundColor: '#E8D8D4',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   section: {
     borderRadius: 10,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8EFEC',
     borderWidth: 1,
-    borderColor: '#E7DED4',
+    borderColor: '#D8C4BE',
     padding: 15,
     gap: 10,
   },
@@ -1246,7 +1323,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   sectionTitle: {
-    color: '#211D1A',
+    color: '#342725',
     fontSize: 17,
     fontWeight: '800',
   },
@@ -1260,9 +1337,9 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     overflow: 'hidden',
     borderRadius: 10,
-    backgroundColor: '#EAF1EC',
+    backgroundColor: '#E5D8D4',
     borderWidth: 1,
-    borderColor: '#D5E1D8',
+    borderColor: '#D2BEB8',
   },
   emptyMapOverlay: {
     position: 'absolute',
@@ -1295,8 +1372,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#DED4C9',
-    backgroundColor: '#FBFAF7',
+    borderColor: '#D2BEB8',
+    backgroundColor: '#F1E5E1',
     paddingHorizontal: 13,
     paddingVertical: 8,
   },
@@ -1306,7 +1383,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   filterDropdownValue: {
-    color: '#211D1A',
+    color: '#342725',
     fontSize: 14,
     fontWeight: '800',
     marginTop: 2,
@@ -1322,10 +1399,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 10,
-    backgroundColor: '#276EF1',
+    backgroundColor: '#A86873',
   },
   calendarIconText: {
-    color: '#FFFFFF',
+    color: '#F8EFEC',
     fontSize: 20,
     fontWeight: '900',
   },
@@ -1338,14 +1415,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#E7DED4',
-    backgroundColor: '#FFFFFF',
+    borderColor: '#D8C4BE',
+    backgroundColor: '#F8EFEC',
   },
   filterDropdownItem: {
     paddingHorizontal: 14,
     paddingVertical: 13,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1E9DE',
+    borderBottomColor: '#E7D2CD',
   },
   filterDropdownItemText: {
     color: '#3E3833',
@@ -1361,13 +1438,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#DED4C9',
-    backgroundColor: '#FBFAF7',
+    borderColor: '#D2BEB8',
+    backgroundColor: '#F1E5E1',
     paddingVertical: 9,
   },
   periodButtonActive: {
-    borderColor: '#276EF1',
-    backgroundColor: '#EDF3FF',
+    borderColor: '#A86873',
+    backgroundColor: '#EBD8DC',
   },
   periodButtonText: {
     color: '#625850',
@@ -1375,7 +1452,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   periodButtonTextActive: {
-    color: '#276EF1',
+    color: '#A86873',
   },
   calendar: {
     gap: 8,
@@ -1403,7 +1480,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   calendarSelectorText: {
-    color: '#211D1A',
+    color: '#342725',
     fontSize: 14,
     fontWeight: '900',
   },
@@ -1422,7 +1499,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#E7DED4',
+    borderColor: '#D8C4BE',
     backgroundColor: 'rgba(255, 255, 255, 0.96)',
   },
   calendarSelectorItem: {
@@ -1430,10 +1507,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1E9DE',
+    borderBottomColor: '#E7D2CD',
   },
   calendarSelectorItemActive: {
-    backgroundColor: '#EDF3FF',
+    backgroundColor: '#EBD8DC',
   },
   calendarSelectorItemText: {
     color: '#3E3833',
@@ -1441,7 +1518,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   calendarSelectorItemTextActive: {
-    color: '#276EF1',
+    color: '#A86873',
   },
   weekdayRow: {
     flexDirection: 'row',
@@ -1466,11 +1543,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   calendarCellInRange: {
-    backgroundColor: '#EAF1FF',
+    backgroundColor: '#EBD8DC',
   },
   calendarCellSelected: {
     borderRadius: 8,
-    backgroundColor: '#276EF1',
+    backgroundColor: '#A86873',
   },
   calendarDayText: {
     color: '#3E3833',
@@ -1478,17 +1555,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   calendarDayTextSelected: {
-    color: '#FFFFFF',
+    color: '#F8EFEC',
   },
   activeDateDot: {
     width: 5,
     height: 5,
     borderRadius: 3,
-    backgroundColor: '#E84D63',
+    backgroundColor: '#B96A76',
     marginTop: 2,
   },
   activeDateDotSelected: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8EFEC',
   },
   bottomDock: {
     gap: 12,
@@ -1502,9 +1579,9 @@ const styles = StyleSheet.create({
     height: 272,
     overflow: 'hidden',
     borderRadius: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8EFEC',
     borderWidth: 1,
-    borderColor: '#E7DED4',
+    borderColor: '#D8C4BE',
   },
   savedCardImage: {
     width: '100%',
@@ -1514,7 +1591,7 @@ const styles = StyleSheet.create({
     height: 116,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EEE7DF',
+    backgroundColor: '#E5D4CF',
   },
   savedCardImagePlaceholderText: {
     color: '#7C7065',
@@ -1527,7 +1604,7 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   savedCardTitle: {
-    color: '#211D1A',
+    color: '#342725',
     fontSize: 17,
     fontWeight: '800',
   },
@@ -1555,7 +1632,7 @@ const styles = StyleSheet.create({
   },
   savedHashtagChip: {
     borderRadius: 999,
-    backgroundColor: '#F1E9DE',
+    backgroundColor: '#E7D2CD',
     paddingHorizontal: 9,
     paddingVertical: 6,
   },
@@ -1570,16 +1647,16 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed',
     borderColor: '#D8CEC3',
     padding: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8EFEC',
   },
   addPlaceButton: {
     alignItems: 'center',
     borderRadius: 10,
-    backgroundColor: '#276EF1',
+    backgroundColor: '#A86873',
     paddingVertical: 15,
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: '#F8EFEC',
     fontSize: 16,
     fontWeight: '800',
   },
@@ -1592,7 +1669,7 @@ const styles = StyleSheet.create({
     maxHeight: '86%',
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8EFEC',
     padding: 18,
     gap: 14,
   },
@@ -1605,7 +1682,7 @@ const styles = StyleSheet.create({
   pickerModeTabs: {
     flexDirection: 'row',
     borderRadius: 10,
-    backgroundColor: '#F1E9DE',
+    backgroundColor: '#E7D2CD',
     padding: 4,
   },
   pickerModeTab: {
@@ -1615,7 +1692,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   pickerModeTabActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8EFEC',
   },
   pickerModeTabText: {
     color: '#7C7065',
@@ -1623,16 +1700,16 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   pickerModeTabTextActive: {
-    color: '#276EF1',
+    color: '#A86873',
   },
   weekHintBox: {
     borderRadius: 10,
-    backgroundColor: '#EEF4F6',
+    backgroundColor: '#E8D8D4',
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
   weekHintText: {
-    color: '#276173',
+    color: '#7A5057',
     fontSize: 13,
     fontWeight: '700',
     lineHeight: 18,
@@ -1646,7 +1723,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 10,
-    backgroundColor: '#EEF4F6',
+    backgroundColor: '#E8D8D4',
     paddingVertical: 14,
   },
   confirmFooterButton: {
@@ -1654,12 +1731,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 10,
-    backgroundColor: '#276EF1',
+    backgroundColor: '#A86873',
     paddingVertical: 14,
   },
   modalSafeArea: {
     flex: 1,
-    backgroundColor: '#F7F4EF',
+    backgroundColor: '#EADCD8',
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1672,7 +1749,7 @@ const styles = StyleSheet.create({
   },
   modalCloseButton: {
     borderRadius: 999,
-    backgroundColor: '#EEE7DF',
+    backgroundColor: '#E5D4CF',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
@@ -1688,17 +1765,17 @@ const styles = StyleSheet.create({
   },
   modalFooter: {
     padding: 18,
-    backgroundColor: '#F7F4EF',
+    backgroundColor: '#EADCD8',
     borderTopWidth: 1,
-    borderTopColor: '#E7DED4',
+    borderTopColor: '#D8C4BE',
   },
   input: {
     minHeight: 46,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#DED4C9',
-    backgroundColor: '#FBFAF7',
-    color: '#211D1A',
+    borderColor: '#D2BEB8',
+    backgroundColor: '#F1E5E1',
+    color: '#342725',
     paddingHorizontal: 13,
     paddingVertical: 10,
     fontSize: 15,
@@ -1715,16 +1792,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 8,
-    backgroundColor: '#276EF1',
+    backgroundColor: '#A86873',
     paddingHorizontal: 12,
   },
   searchButtonText: {
-    color: '#FFFFFF',
+    color: '#F8EFEC',
     fontSize: 14,
     fontWeight: '800',
   },
   searchMessage: {
-    color: '#276173',
+    color: '#7A5057',
     fontSize: 13,
     fontWeight: '700',
     lineHeight: 18,
@@ -1733,21 +1810,21 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#E7DED4',
-    backgroundColor: '#FFFFFF',
+    borderColor: '#D8C4BE',
+    backgroundColor: '#F8EFEC',
   },
   searchResultItem: {
     gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 11,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1E9DE',
+    borderBottomColor: '#E7D2CD',
   },
   searchResultItemSelected: {
-    backgroundColor: '#EDF3FF',
+    backgroundColor: '#EBD8DC',
   },
   searchResultTitle: {
-    color: '#211D1A',
+    color: '#342725',
     fontSize: 15,
     fontWeight: '800',
   },
@@ -1757,7 +1834,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   searchResultCategory: {
-    color: '#276173',
+    color: '#7A5057',
     fontSize: 12,
     fontWeight: '800',
   },
@@ -1775,12 +1852,12 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     borderRadius: 999,
-    backgroundColor: '#EEF4F6',
+    backgroundColor: '#E8D8D4',
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   secondaryButtonText: {
-    color: '#276173',
+    color: '#7A5057',
     fontSize: 13,
     fontWeight: '800',
   },
@@ -1801,7 +1878,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   coverPhotoTile: {
-    borderColor: '#276EF1',
+    borderColor: '#A86873',
   },
   photoImage: {
     width: '100%',
@@ -1819,7 +1896,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(33,29,26,0.72)',
   },
   photoDeleteButtonText: {
-    color: '#FFFFFF',
+    color: '#F8EFEC',
     fontSize: 20,
     fontWeight: '900',
     lineHeight: 22,
@@ -1834,7 +1911,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   coverBadgeSelected: {
-    backgroundColor: '#276EF1',
+    backgroundColor: '#A86873',
   },
   coverBadgeText: {
     color: '#4F5654',
@@ -1842,7 +1919,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   coverBadgeTextSelected: {
-    color: '#FFFFFF',
+    color: '#F8EFEC',
   },
   emptyPhotoBox: {
     minHeight: 82,
@@ -1860,7 +1937,7 @@ const styles = StyleSheet.create({
   },
   hashtagChip: {
     borderRadius: 999,
-    backgroundColor: '#F1E9DE',
+    backgroundColor: '#E7D2CD',
     paddingHorizontal: 10,
     paddingVertical: 7,
   },
@@ -1870,7 +1947,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   saveMessage: {
-    color: '#2E6543',
+    color: '#7C4F58',
     fontSize: 14,
     fontWeight: '700',
     paddingHorizontal: 4,
@@ -1878,7 +1955,7 @@ const styles = StyleSheet.create({
   saveButton: {
     alignItems: 'center',
     borderRadius: 10,
-    backgroundColor: '#276EF1',
+    backgroundColor: '#A86873',
     paddingVertical: 15,
   },
   detailOverlay: {
@@ -1891,7 +1968,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8EFEC',
   },
   detailActionBar: {
     position: 'absolute',
@@ -1914,19 +1991,19 @@ const styles = StyleSheet.create({
   },
   detailDeleteButton: {
     borderRadius: 999,
-    backgroundColor: '#FDECEF',
+    backgroundColor: '#ECDADD',
     paddingHorizontal: 11,
     paddingVertical: 8,
   },
   detailDeleteText: {
-    color: '#C9364E',
+    color: '#9D4F5B',
     fontSize: 13,
     fontWeight: '800',
   },
   detailImageFrame: {
     position: 'relative',
     height: 260,
-    backgroundColor: '#EEE7DF',
+    backgroundColor: '#E5D4CF',
   },
   detailImageButton: {
     width: '100%',
@@ -1953,7 +2030,7 @@ const styles = StyleSheet.create({
     right: 12,
   },
   photoNavButtonText: {
-    color: '#211D1A',
+    color: '#342725',
     fontSize: 28,
     fontWeight: '800',
     lineHeight: 30,
@@ -1977,13 +2054,13 @@ const styles = StyleSheet.create({
   },
   photoPagerDotActive: {
     width: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F8EFEC',
   },
   detailImagePlaceholder: {
     height: 220,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EEE7DF',
+    backgroundColor: '#E5D4CF',
   },
   fullScreenPhotoOverlay: {
     flex: 1,
@@ -2006,7 +2083,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   fullScreenPhotoCloseText: {
-    color: '#FFFFFF',
+    color: '#F8EFEC',
     fontSize: 14,
     fontWeight: '900',
   },
@@ -2015,7 +2092,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   detailTitle: {
-    color: '#211D1A',
+    color: '#342725',
     fontSize: 24,
     fontWeight: '900',
   },
