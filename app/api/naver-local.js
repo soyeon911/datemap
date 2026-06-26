@@ -7,7 +7,7 @@ const naverMapClientSecret = getEnv(
   'NAVER_NCP_CLIENT_SECRET'
 );
 
-export default async function handler(request, response) {
+async function handler(request, response) {
   setCorsHeaders(response);
 
   if (request.method === 'OPTIONS') {
@@ -184,3 +184,5 @@ function setCorsHeaders(response) {
   response.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
+
+module.exports = handler;
