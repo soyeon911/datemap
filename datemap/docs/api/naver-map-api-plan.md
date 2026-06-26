@@ -148,7 +148,9 @@ iOS를 먼저 구현합니다.
 
 현재 프록시 구현 위치:
 
-- `api/naver-place-search.ts`
+- Vercel Root Directory: `app/`
+- Function: `app/api/naver-place-search.js`
+- Endpoint: `/api/naver-place-search`
 
 Vercel 환경 변수:
 

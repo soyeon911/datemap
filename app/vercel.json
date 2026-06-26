@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/naver-place-search.js": {
+      "maxDuration": 10
+    }
+  }
+}
