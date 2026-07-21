@@ -47,6 +47,7 @@
     "ios": "expo run:ios",
     "ios:dev": "expo run:ios",
     "start:dev-client": "expo start --dev-client",
+    "start:ios-device": "expo start --dev-client --clear --port 8081 --host lan",
     "web": "expo start --web",
     "lint": "expo lint"
   },

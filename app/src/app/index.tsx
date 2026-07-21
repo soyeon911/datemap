@@ -85,6 +85,7 @@ export default function HomeScreen() {
   const [detailPhotoIndex, setDetailPhotoIndex] = useState(0);
   const [fullScreenPhotoUri, setFullScreenPhotoUri] = useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isSettingsVisible, setIsSettingsVisible] = useState(false);
   const cardScrollRef = useRef<ScrollView | null>(null);
   const cardScrollIndexRef = useRef(0);
 
@@ -321,18 +322,38 @@ export default function HomeScreen() {
 
   function selectFilterDate(nextDate: string) {
     setFilterPreset('all');
-    if (calendarTarget === 'start') {
+
+    const hasStartDate = Boolean(filterStartDate);
+    const hasEndDate = Boolean(filterEndDate);
+
+    // 1. 아무것도 선택 안 했거나, 이미 시작/종료가 모두 선택된 상태면 새로 시작
+    if (!hasStartDate || (hasStartDate && hasEndDate)) {
       setFilterStartDate(nextDate);
-      if (filterEndDate && nextDate > filterEndDate) {
-        setFilterEndDate(nextDate);
-      }
+      setFilterEndDate('');
+      setCalendarTarget('end');
       return;
     }
 
-    setFilterEndDate(nextDate);
-    if (filterStartDate && nextDate < filterStartDate) {
+    // 2. 시작일만 있는 상태에서 시작일보다 이전 날짜를 누르면 새로 시작
+    if (nextDate < filterStartDate) {
       setFilterStartDate(nextDate);
+      setFilterEndDate('');
+      setCalendarTarget('end');
+      return;
     }
+
+    // 3. 시작일 이후 날짜면 종료일로 설정
+    setFilterEndDate(nextDate);
+    setCalendarTarget('start');
+  }
+
+    if () {
+      setFilterEndDate(filterStartDate);
+      setFilterStartDate(nextDate);
+    } else {
+      setFilterEndDate(nextDate);
+    }
+    setCalendarTarget('start');
   }
 
   const activeFilterDate = calendarTarget === 'start' ? filterStartDate || today : filterEndDate || today;
@@ -443,13 +464,14 @@ export default function HomeScreen() {
             <View style={styles.statusBadge}>
               <TextBadge>{databaseState === 'ready' ? `${datePlaceCount} places` : databaseState}</TextBadge>
             </View>
-            <Pressable
-              accessibilityLabel="다크모드 전환"
-              style={[styles.darkModeButton, isDarkMode && styles.darkModeButtonActive]}
-              onPress={() => setIsDarkMode((current) => !current)}>
-              <Text style={[styles.darkModeButtonText, isDarkMode && styles.darkModeButtonTextActive]}>
-                {isDarkMode ? 'Light' : 'Dark'}
-              </Text>
+            <Pressable accessibilityLabel="설정 열기" style={styles.settingsButton} onPress={() => setIsSettingsVisible(true)}>
+              <SymbolView
+                name="gearshape"
+                size={20}
+                tintColor="#7A5057"
+                weight="semibold"
+                fallback={<Text style={styles.settingsButtonText}>⚙</Text>}
+              />
             </Pressable>
           </View>
         </View>
@@ -577,20 +599,16 @@ export default function HomeScreen() {
 
             {datePickerMode === 'range' ? (
               <View style={styles.periodButtonRow}>
-                <Pressable
-                  style={[styles.periodButton, calendarTarget === 'start' && styles.periodButtonActive]}
-                  onPress={() => setCalendarTarget('start')}>
+                <View style={[styles.periodButton, calendarTarget === 'start' && styles.periodButtonActive]}>
                   <Text style={[styles.periodButtonText, calendarTarget === 'start' && styles.periodButtonTextActive]}>
-                    {filterStartDate || '시작일'}
+                    
                   </Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.periodButton, calendarTarget === 'end' && styles.periodButtonActive]}
-                  onPress={() => setCalendarTarget('end')}>
+                </View>
+                <View style={[styles.periodButton, calendarTarget === 'end' && styles.periodButtonActive]}>
                   <Text style={[styles.periodButtonText, calendarTarget === 'end' && styles.periodButtonTextActive]}>
-                    {filterEndDate || '종료일'}
+                    
                   </Text>
-                </Pressable>
+                </View>
               </View>
             ) : (
               <View style={styles.weekHintBox}>
@@ -617,6 +635,52 @@ export default function HomeScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={isSettingsVisible}
+        onRequestClose={() => setIsSettingsVisible(false)}>
+        <Pressable style={styles.settingsOverlay} onPress={() => setIsSettingsVisible(false)}>
+          <Pressable style={styles.settingsSheet} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.settingsHeader}>
+              <View>
+                <TextLabel>DearMap</TextLabel>
+                <TextSectionTitle>설정 및 정보</TextSectionTitle>
+              </View>
+              <Pressable style={styles.modalCloseButton} onPress={() => setIsSettingsVisible(false)}>
+                <Text style={styles.modalCloseButtonText}>닫기</Text>
+              </Pressable>
+            </View>
+            <View style={styles.settingsRow}>
+              <View>
+                <Text style={styles.settingsTitle}>화면 모드</Text>
+                <Text style={styles.settingsDescription}>따뜻한 핑크 톤과 어두운 화면을 전환합니다.</Text>
+              </View>
+              <Pressable
+                accessibilityLabel="다크모드 전환"
+                style={[styles.darkModeButton, isDarkMode && styles.darkModeButtonActive]}
+                onPress={() => setIsDarkMode((current) => !current)}>
+                <Text style={[styles.darkModeButtonText, isDarkMode && styles.darkModeButtonTextActive]}>
+                  {isDarkMode ? 'Light' : 'Dark'}
+                </Text>
+              </Pressable>
+            </View>
+            <View style={styles.settingsInfoBox}>
+              <Text style={styles.settingsTitle}>서비스 정보</Text>
+              <Text style={styles.settingsDescription}>
+                DearMap은 데이트 장소, 사진, 메모를 기기 내 SQLite에 우선 저장하는 개인 기록 앱입니다.
+              </Text>
+            </View>
+            <View style={styles.settingsInfoBox}>
+              <Text style={styles.settingsTitle}>라이선스</Text>
+              <Text style={styles.settingsDescription}>
+                지도는 네이버 지도 SDK를 사용하며, 앱은 Expo 및 React Native 기반으로 개발됩니다.
+              </Text>
+            </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       <Modal animationType="slide" visible={isEditorVisible} onRequestClose={closeAddPlaceModal}>
@@ -1281,6 +1345,21 @@ const styles = StyleSheet.create({
   darkModeButtonTextActive: {
     color: '#EADCD8',
   },
+  settingsButton: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: '#D8C4BE',
+    backgroundColor: 'rgba(248,239,236,0.82)',
+  },
+  settingsButtonText: {
+    color: '#7A5057',
+    fontSize: 20,
+    fontWeight: '900',
+  },
   mainMapPanel: {
     height: 426,
     flexGrow: 0,
@@ -1333,13 +1412,60 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   mainNaverMapPanel: {
-    height: 250,
+    height: 252,
     flexShrink: 0,
     overflow: 'hidden',
     borderRadius: 10,
     backgroundColor: '#E5D8D4',
     borderWidth: 1,
     borderColor: '#D2BEB8',
+  },
+  settingsOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(52,39,37,0.36)',
+  },
+  settingsSheet: {
+    gap: 14,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    backgroundColor: '#F8EFEC',
+    padding: 18,
+  },
+  settingsHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 14,
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D8C4BE',
+    backgroundColor: '#F1E5E1',
+    padding: 14,
+  },
+  settingsInfoBox: {
+    gap: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#D8C4BE',
+    backgroundColor: '#F1E5E1',
+    padding: 14,
+  },
+  settingsTitle: {
+    color: '#342725',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  settingsDescription: {
+    color: '#625850',
+    fontSize: 13,
+    lineHeight: 18,
   },
   emptyMapOverlay: {
     position: 'absolute',
@@ -2105,5 +2231,26 @@ const styles = StyleSheet.create({
     color: '#3E3833',
     fontSize: 16,
     lineHeight: 23,
+  },
+  quickRangeRow: {
+  flexDirection: 'row',
+  gap: 8,
+  },
+
+  quickRangeButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#A86873',
+    backgroundColor: '#F8EFEC',
+    paddingVertical: 10,
+  },
+
+  quickRangeButtonText: {
+    color: '#A86873',
+    fontSize: 13,
+    fontWeight: '900',
   },
 });

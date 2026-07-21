@@ -47,7 +47,7 @@ export function SavedPlacesMap({ places, style, onSelectPlace }: SavedPlacesMapP
   }
 
   return (
-    <View style={[styles.container, style]}>
+    <View collapsable={false} style={[styles.container, style]}>
       <NaverMapView
         style={styles.map}
         region={region}
