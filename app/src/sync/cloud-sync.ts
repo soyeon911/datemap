@@ -72,9 +72,21 @@ export async function pushDatePlace(db: SQLiteDatabase, userId: string, datePlac
       [datePlaceId]
     );
 
-    const uploadedPhotos = await Promise.all(
+    const uploadResults = await Promise.allSettled(
       photos.map((photo) => ensurePhotoUploaded(db, userId, datePlaceId, photo))
     );
+
+    // A flaky network shouldn't stop the place/entry text data from syncing — skip
+    // whichever photo failed (it stays remote_url=null and retries on the next push).
+    const uploadedPhotos: LocalPhotoRow[] = [];
+
+    uploadResults.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        uploadedPhotos.push(result.value);
+      } else {
+        console.error('[cloud-sync] photo upload failed:', photos[index]?.id, result.reason);
+      }
+    });
 
     const coverPhoto = uploadedPhotos.find((photo) => photo.localUri === place.coverPhotoUri);
     const nowIso = new Date().toISOString();
