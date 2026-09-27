@@ -1,3 +1,4 @@
+import { decode as decodeBase64 } from 'base64-arraybuffer';
 import * as FileSystem from 'expo-file-system/legacy';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
@@ -310,10 +311,14 @@ async function ensurePhotoUploaded(
   const extension = photo.localUri.split('.').pop()?.toLowerCase() || 'jpg';
   const storagePath = `${userId}/${datePlaceId}/${photo.id}.${extension}`;
 
-  const response = await fetch(photo.localUri);
-  const blob = await response.blob();
+  // React Native's fetch/Blob polyfill can't turn a file:// response into a Blob
+  // here, so read the file as base64 and upload the decoded ArrayBuffer instead
+  // (the approach Supabase's own React Native docs recommend).
+  const base64 = await FileSystem.readAsStringAsync(photo.localUri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
 
-  const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(storagePath, blob, {
+  const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(storagePath, decodeBase64(base64), {
     contentType: guessContentType(extension),
     upsert: true,
   });
