@@ -1,10 +1,7 @@
--- Run this once in the Supabase SQL Editor for a new project.
--- Mirrors the local SQLite schema (app/src/db/migrations.ts) with a
--- (user_id, id) composite key, since ids are client-generated strings
--- (e.g. `entry_20260626`, `place_1735...`) that are only unique per user.
---
--- For a project that already ran an earlier version of this file, apply
--- migrations/0002_couple_sharing.sql instead of re-running this one.
+-- Run this once in the Supabase SQL Editor for a project that already has
+-- schema.sql applied. Adds couple pairing: an invite-code based link between
+-- two auth.users, after which both can see each other's date records
+-- (read-only for the non-creator; edit/delete stays creator-only).
 
 create table couples (
   id uuid primary key default gen_random_uuid(),
@@ -14,57 +11,7 @@ create table couples (
   created_at timestamptz not null default now()
 );
 
-create table date_entries (
-  id text not null,
-  user_id uuid not null default auth.uid() references auth.users(id),
-  couple_id uuid references couples(id),
-  date date not null,
-  year int not null,
-  month int not null,
-  week_of_year int not null,
-  year_month text not null,
-  summary text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  primary key (user_id, id)
-);
-
-create table date_places (
-  id text not null,
-  user_id uuid not null default auth.uid() references auth.users(id),
-  couple_id uuid references couples(id),
-  date_entry_id text not null,
-  place_id text,
-  place_name text not null,
-  address text,
-  latitude double precision not null,
-  longitude double precision not null,
-  one_line_diary text,
-  hashtags jsonb not null default '[]',
-  cover_photo_path text,
-  normalized_search_text text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  primary key (user_id, id),
-  foreign key (user_id, date_entry_id) references date_entries(user_id, id) on delete cascade
-);
-
-create table date_photos (
-  id text not null,
-  user_id uuid not null default auth.uid() references auth.users(id),
-  couple_id uuid references couples(id),
-  date_place_id text not null,
-  storage_path text not null,
-  sort_order int not null,
-  created_at timestamptz not null default now(),
-  primary key (user_id, id),
-  foreign key (user_id, date_place_id) references date_places(user_id, id) on delete cascade
-);
-
 alter table couples enable row level security;
-alter table date_entries enable row level security;
-alter table date_places enable row level security;
-alter table date_photos enable row level security;
 
 create policy "members can view" on couples for select
   using (auth.uid() = owner_user_id or auth.uid() = partner_user_id);
@@ -101,6 +48,14 @@ $$;
 
 grant execute on function join_couple(text) to authenticated;
 
+alter table date_entries add column couple_id uuid references couples(id);
+alter table date_places add column couple_id uuid references couples(id);
+alter table date_photos add column couple_id uuid references couples(id);
+
+drop policy "owner rw" on date_entries;
+drop policy "owner rw" on date_places;
+drop policy "owner rw" on date_photos;
+
 create policy "select own or couple" on date_entries for select using (
   auth.uid() = user_id or couple_id in (
     select id from couples where owner_user_id = auth.uid() or partner_user_id = auth.uid()
@@ -128,10 +83,9 @@ create policy "write own" on date_photos for insert with check (auth.uid() = use
 create policy "update own" on date_photos for update using (auth.uid() = user_id);
 create policy "delete own" on date_photos for delete using (auth.uid() = user_id);
 
-insert into storage.buckets (id, name, public) values ('date-photos', 'date-photos', false)
-  on conflict (id) do nothing;
-
 -- storage: read own or partner's photos, write only to own folder
+drop policy "owner rw storage" on storage.objects;
+
 create policy "select own or partner storage" on storage.objects for select using (
   bucket_id = 'date-photos' and (
     (storage.foldername(name))[1] = auth.uid()::text

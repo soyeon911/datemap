@@ -10,6 +10,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -29,6 +30,7 @@ import {
   type SavedDatePlace,
 } from '@/db/date-cards';
 import { useAuth } from '@/lib/auth-context';
+import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
 
@@ -57,8 +59,11 @@ const filterPresetLabels: Record<FilterPreset, string> = {
 
 export default function HomeScreen() {
   const db = useSQLiteContext();
-  const { session } = useAuth();
+  const { session, signOut } = useAuth();
+  const { couple, createInvite, joinWithCode, leaveCouple } = useCouple();
   const pulledUserIdRef = useRef<string | null>(null);
+  const pulledCoupleIdRef = useRef<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [databaseState, setDatabaseState] = useState<DatabaseState>('checking');
   const [datePlaceCount, setDatePlaceCount] = useState(0);
   const [selectedCoord, setSelectedCoord] = useState<SelectedCoord | null>(null);
@@ -90,6 +95,9 @@ export default function HomeScreen() {
   const [fullScreenPhotoUri, setFullScreenPhotoUri] = useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isSettingsVisible, setIsSettingsVisible] = useState(false);
+  const [coupleCodeInput, setCoupleCodeInput] = useState('');
+  const [coupleMessage, setCoupleMessage] = useState<string | null>(null);
+  const [isCouplePending, setIsCouplePending] = useState(false);
   const cardScrollRef = useRef<ScrollView | null>(null);
   const cardScrollIndexRef = useRef(0);
 
@@ -173,11 +181,24 @@ export default function HomeScreen() {
 
     pulledUserIdRef.current = userId;
 
-    pullRemoteChanges(db, userId).then(() => refreshDatePlaces());
+    pullRemoteChanges(db).then(() => refreshDatePlaces());
     // refreshDatePlaces intentionally omitted: it's redefined every render, and the
     // pulledUserIdRef guard above already ensures this only runs once per login.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, session]);
+
+  useEffect(() => {
+    const coupleId = couple?.id ?? null;
+
+    if (!coupleId || pulledCoupleIdRef.current === coupleId) {
+      return;
+    }
+
+    pulledCoupleIdRef.current = coupleId;
+
+    pullRemoteChanges(db).then(() => refreshDatePlaces());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, couple]);
 
   useEffect(() => {
     if (filteredPlaces.length < 2) {
@@ -200,6 +221,17 @@ export default function HomeScreen() {
     setDatePlaceCount(count);
     setSavedPlaces(places);
     setDatabaseState('ready');
+  }
+
+  async function handlePullToRefresh() {
+    setIsRefreshing(true);
+
+    try {
+      await pullRemoteChanges(db);
+      await refreshDatePlaces();
+    } finally {
+      setIsRefreshing(false);
+    }
   }
 
   function openAddPlaceModal() {
@@ -283,6 +315,10 @@ export default function HomeScreen() {
   }
 
   async function saveDatePlace() {
+    if (!session) {
+      return;
+    }
+
     if (!selectedCoord) {
       setSaveMessage('지도에서 저장할 위치를 먼저 선택하세요.');
       return;
@@ -306,6 +342,8 @@ export default function HomeScreen() {
       hashtags,
       photoUris: photos.map((photo) => photo.uri),
       coverPhotoUri,
+      ownerUserId: session.user.id,
+      coupleId: couple?.id ?? null,
     };
 
     let savedDatePlaceId: string;
@@ -346,6 +384,54 @@ export default function HomeScreen() {
         style: 'destructive',
         onPress: () => {
           void handleDeletePlace(place);
+        },
+      },
+    ]);
+  }
+
+  async function handleCreateInvite() {
+    setIsCouplePending(true);
+    setCoupleMessage(null);
+
+    try {
+      await createInvite();
+    } catch (error) {
+      setCoupleMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsCouplePending(false);
+    }
+  }
+
+  async function handleJoinCouple() {
+    const code = coupleCodeInput.trim().toUpperCase();
+
+    if (!code) {
+      return;
+    }
+
+    setIsCouplePending(true);
+    setCoupleMessage(null);
+
+    try {
+      await joinWithCode(code);
+      setCoupleCodeInput('');
+      await pullRemoteChanges(db);
+      await refreshDatePlaces();
+    } catch (error) {
+      setCoupleMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsCouplePending(false);
+    }
+  }
+
+  function confirmLeaveCouple() {
+    Alert.alert('커플 연결 해제', '연결을 해제하면 서로의 기록이 더 이상 보이지 않아요.', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '해제',
+        style: 'destructive',
+        onPress: () => {
+          void leaveCouple();
         },
       },
     ]);
@@ -473,7 +559,8 @@ export default function HomeScreen() {
       <ScrollView
         style={styles.mainScreenScroll}
         contentContainerStyle={[styles.mainScreen, isDarkMode && styles.mainScreenDark]}
-        showsVerticalScrollIndicator={false}>
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handlePullToRefresh} />}>
         <View style={styles.header}>
           <View style={styles.brandBlock}>
             <Image source={dateMapLogo} style={styles.headerLogo} />
@@ -690,6 +777,46 @@ export default function HomeScreen() {
               </Pressable>
             </View>
             <View style={styles.settingsInfoBox}>
+              <Text style={styles.settingsTitle}>커플 연결</Text>
+              {couple ? (
+                <>
+                  <Text style={styles.settingsDescription}>
+                    {couple.partnerUserId
+                      ? '파트너와 연결되어 서로의 기록을 함께 보고 있어요.'
+                      : `초대 코드: ${couple.inviteCode} (파트너가 이 코드를 입력하면 연결됩니다)`}
+                  </Text>
+                  <Pressable style={styles.darkModeButton} onPress={confirmLeaveCouple}>
+                    <Text style={styles.darkModeButtonText}>연결 해제</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.settingsDescription}>
+                    초대 코드를 만들어 파트너에게 공유하거나, 파트너의 코드를 입력해 연결하세요.
+                  </Text>
+                  <Pressable style={styles.darkModeButton} onPress={handleCreateInvite} disabled={isCouplePending}>
+                    <Text style={styles.darkModeButtonText}>초대 코드 만들기</Text>
+                  </Pressable>
+                  <TextInput
+                    value={coupleCodeInput}
+                    onChangeText={setCoupleCodeInput}
+                    placeholder="상대방 코드 입력"
+                    placeholderTextColor="#9B9187"
+                    autoCapitalize="characters"
+                    editable={!isCouplePending}
+                    style={styles.input}
+                  />
+                  <Pressable
+                    style={styles.darkModeButton}
+                    onPress={handleJoinCouple}
+                    disabled={isCouplePending || !coupleCodeInput.trim()}>
+                    <Text style={styles.darkModeButtonText}>코드로 연결하기</Text>
+                  </Pressable>
+                </>
+              )}
+              {coupleMessage ? <Text style={styles.settingsDescription}>{coupleMessage}</Text> : null}
+            </View>
+            <View style={styles.settingsInfoBox}>
               <Text style={styles.settingsTitle}>서비스 정보</Text>
               <Text style={styles.settingsDescription}>
                 DearMap은 데이트 장소, 사진, 메모를 기기 내 SQLite에 우선 저장하는 개인 기록 앱입니다.
@@ -700,6 +827,11 @@ export default function HomeScreen() {
               <Text style={styles.settingsDescription}>
                 지도는 네이버 지도 SDK를 사용하며, 앱은 Expo 및 React Native 기반으로 개발됩니다.
               </Text>
+            </View>
+            <View style={styles.settingsInfoBox}>
+              <Pressable style={styles.darkModeButton} onPress={() => void signOut()}>
+                <Text style={styles.darkModeButtonText}>로그아웃</Text>
+              </Pressable>
             </View>
           </Pressable>
         </Pressable>
@@ -878,14 +1010,20 @@ export default function HomeScreen() {
                 <Pressable style={styles.detailActionButton} onPress={() => setSelectedSavedPlace(null)}>
                   <Text style={styles.detailActionText}>닫기</Text>
                 </Pressable>
-                <Pressable
-                  style={styles.detailActionButton}
-                  onPress={() => openEditPlaceModal(selectedSavedPlace)}>
-                  <Text style={styles.detailActionText}>수정</Text>
-                </Pressable>
-                <Pressable style={styles.detailDeleteButton} onPress={() => confirmDeletePlace(selectedSavedPlace)}>
-                  <Text style={styles.detailDeleteText}>삭제</Text>
-                </Pressable>
+                {selectedSavedPlace.ownerUserId === null || selectedSavedPlace.ownerUserId === session?.user.id ? (
+                  <>
+                    <Pressable
+                      style={styles.detailActionButton}
+                      onPress={() => openEditPlaceModal(selectedSavedPlace)}>
+                      <Text style={styles.detailActionText}>수정</Text>
+                    </Pressable>
+                    <Pressable style={styles.detailDeleteButton} onPress={() => confirmDeletePlace(selectedSavedPlace)}>
+                      <Text style={styles.detailDeleteText}>삭제</Text>
+                    </Pressable>
+                  </>
+                ) : (
+                  <Text style={styles.detailActionText}>상대방이 남긴 기록이에요</Text>
+                )}
               </View>
 
               {detailPhotoUris.length > 0 ? (

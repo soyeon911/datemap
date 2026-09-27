@@ -32,6 +32,8 @@ export type CreateDateCardInput = {
   hashtags?: string[];
   photoUris?: string[];
   coverPhotoUri?: string | null;
+  ownerUserId: string;
+  coupleId?: string | null;
 };
 
 export type UpdateDatePlaceInput = CreateDateCardInput;
@@ -49,6 +51,7 @@ export type SavedDatePlace = {
   photoUris: string[];
   photoCount: number;
   yearMonth: string;
+  ownerUserId: string | null;
 };
 
 export async function countDateCards(db: SQLiteDatabase) {
@@ -97,8 +100,8 @@ export async function createDateCard(db: SQLiteDatabase, input: CreateDateCardIn
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         dateEntryId,
-        null,
-        null,
+        input.ownerUserId,
+        input.coupleId ?? null,
         input.date,
         year,
         month,
@@ -124,9 +127,11 @@ export async function createDateCard(db: SQLiteDatabase, input: CreateDateCardIn
       cover_photo_uri,
       normalized_search_text,
       sync_status,
+      owner_user_id,
+      couple_id,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         datePlaceId,
         dateEntryId,
@@ -140,6 +145,8 @@ export async function createDateCard(db: SQLiteDatabase, input: CreateDateCardIn
         input.coverPhotoUri ?? input.photoUris?.[0] ?? null,
         normalizedSearchText,
         'local_only',
+        input.ownerUserId,
+        input.coupleId ?? null,
         now,
         now,
       ]
@@ -193,6 +200,7 @@ export async function getSavedDatePlaces(db: SQLiteDatabase, limit = 30) {
     photoUrisJoined: string | null;
     photoCount: number;
     yearMonth: string;
+    ownerUserId: string | null;
   }>(
     `SELECT
       date_places.id,
@@ -206,7 +214,8 @@ export async function getSavedDatePlaces(db: SQLiteDatabase, limit = 30) {
       date_places.cover_photo_uri AS coverPhotoUri,
       GROUP_CONCAT(date_photos.local_uri, '||') AS photoUrisJoined,
       COUNT(date_photos.id) AS photoCount,
-      date_entries.year_month AS yearMonth
+      date_entries.year_month AS yearMonth,
+      date_places.owner_user_id AS ownerUserId
     FROM date_places
     INNER JOIN date_entries ON date_entries.id = date_places.date_entry_id
     LEFT JOIN date_photos ON date_photos.date_place_id = date_places.id
@@ -253,7 +262,19 @@ export async function updateDatePlace(db: SQLiteDatabase, datePlaceId: string, i
         created_at,
         updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [nextDateEntryId, null, null, input.date, year, month, weekOfYear, yearMonth, null, now, now]
+      [
+        nextDateEntryId,
+        input.ownerUserId,
+        input.coupleId ?? null,
+        input.date,
+        year,
+        month,
+        weekOfYear,
+        yearMonth,
+        null,
+        now,
+        now,
+      ]
     );
 
     await db.runAsync(
@@ -270,6 +291,8 @@ export async function updateDatePlace(db: SQLiteDatabase, datePlaceId: string, i
         cover_photo_uri = ?,
         normalized_search_text = ?,
         sync_status = ?,
+        owner_user_id = ?,
+        couple_id = ?,
         updated_at = ?
       WHERE id = ?`,
       [
@@ -284,6 +307,8 @@ export async function updateDatePlace(db: SQLiteDatabase, datePlaceId: string, i
         input.coverPhotoUri ?? input.photoUris?.[0] ?? null,
         normalizedSearchText,
         'local_only',
+        input.ownerUserId,
+        input.coupleId ?? null,
         now,
         datePlaceId,
       ]

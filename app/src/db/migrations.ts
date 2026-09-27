@@ -1,7 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 export const DATABASE_NAME = 'datemap.db';
-export const DATABASE_VERSION = 2;
+export const DATABASE_VERSION = 3;
 
 export async function migrateDatabase(db: SQLiteDatabase) {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
@@ -107,6 +107,13 @@ export async function migrateDatabase(db: SQLiteDatabase) {
 
       CREATE INDEX IF NOT EXISTS idx_date_places_sync_status
         ON date_places(sync_status);
+    `);
+  }
+
+  if (currentVersion < 3) {
+    await db.execAsync(`
+      ALTER TABLE date_places ADD COLUMN owner_user_id TEXT;
+      ALTER TABLE date_places ADD COLUMN couple_id TEXT;
     `);
   }
 

@@ -7,6 +7,7 @@ import AppTabs from '@/components/app-tabs';
 import { LoginScreen } from '@/components/auth/login-screen';
 import { DATABASE_NAME, migrateDatabase } from '@/db/migrations';
 import { AuthProvider, useAuth } from '@/lib/auth-context';
+import { CoupleProvider } from '@/lib/couple-context';
 
 function AuthGate() {
   const { session, loading } = useAuth();
@@ -25,8 +26,10 @@ export default function TabLayout() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDatabase}>
         <AuthProvider>
-          <AnimatedSplashOverlay />
-          <AuthGate />
+          <CoupleProvider>
+            <AnimatedSplashOverlay />
+            <AuthGate />
+          </CoupleProvider>
         </AuthProvider>
       </SQLiteProvider>
     </ThemeProvider>

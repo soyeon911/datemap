@@ -17,6 +17,7 @@ type LocalDatePlaceRow = {
   hashtagsJson: string;
   coverPhotoUri: string | null;
   normalizedSearchText: string | null;
+  coupleId: string | null;
   date: string;
   year: number;
   month: number;
@@ -47,6 +48,7 @@ export async function pushDatePlace(db: SQLiteDatabase, userId: string, datePlac
         date_places.hashtags_json AS hashtagsJson,
         date_places.cover_photo_uri AS coverPhotoUri,
         date_places.normalized_search_text AS normalizedSearchText,
+        date_places.couple_id AS coupleId,
         date_entries.date,
         date_entries.year,
         date_entries.month,
@@ -79,6 +81,7 @@ export async function pushDatePlace(db: SQLiteDatabase, userId: string, datePlac
     const { error: entryError } = await supabase.from('date_entries').upsert({
       id: place.dateEntryId,
       user_id: userId,
+      couple_id: place.coupleId,
       date: place.date,
       year: place.year,
       month: place.month,
@@ -95,6 +98,7 @@ export async function pushDatePlace(db: SQLiteDatabase, userId: string, datePlac
     const { error: placeError } = await supabase.from('date_places').upsert({
       id: place.id,
       user_id: userId,
+      couple_id: place.coupleId,
       date_entry_id: place.dateEntryId,
       place_id: place.placeId,
       place_name: place.placeName,
@@ -117,6 +121,7 @@ export async function pushDatePlace(db: SQLiteDatabase, userId: string, datePlac
         uploadedPhotos.map((photo) => ({
           id: photo.id,
           user_id: userId,
+          couple_id: place.coupleId,
           date_place_id: datePlaceId,
           storage_path: photo.remoteUrl,
           sort_order: photo.sortOrder,
@@ -152,30 +157,23 @@ export async function deleteRemoteDatePlace(userId: string, datePlaceId: string)
   }
 }
 
-export async function pullRemoteChanges(db: SQLiteDatabase, userId: string) {
+export async function pullRemoteChanges(db: SQLiteDatabase) {
   try {
-    const { data: entries, error: entriesError } = await supabase
-      .from('date_entries')
-      .select('*')
-      .eq('user_id', userId);
+    // No .eq('user_id', ...) filter here: RLS already scopes these selects to rows
+    // the caller owns or shares a couple with, so whatever comes back is visible.
+    const { data: entries, error: entriesError } = await supabase.from('date_entries').select('*');
 
     if (entriesError) {
       throw entriesError;
     }
 
-    const { data: places, error: placesError } = await supabase
-      .from('date_places')
-      .select('*')
-      .eq('user_id', userId);
+    const { data: places, error: placesError } = await supabase.from('date_places').select('*');
 
     if (placesError) {
       throw placesError;
     }
 
-    const { data: photos, error: photosError } = await supabase
-      .from('date_photos')
-      .select('*')
-      .eq('user_id', userId);
+    const { data: photos, error: photosError } = await supabase.from('date_photos').select('*');
 
     if (photosError) {
       throw photosError;
@@ -185,13 +183,16 @@ export async function pullRemoteChanges(db: SQLiteDatabase, userId: string) {
       for (const entry of entries ?? []) {
         await db.runAsync(
           `INSERT INTO date_entries (id, owner_user_id, couple_id, date, year, month, week_of_year, year_month, summary, created_at, updated_at)
-           VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
+             owner_user_id = excluded.owner_user_id, couple_id = excluded.couple_id,
              date = excluded.date, year = excluded.year, month = excluded.month,
              week_of_year = excluded.week_of_year, year_month = excluded.year_month,
              summary = excluded.summary, updated_at = excluded.updated_at`,
           [
             entry.id,
+            entry.user_id,
+            entry.couple_id,
             entry.date,
             entry.year,
             entry.month,
@@ -206,13 +207,14 @@ export async function pullRemoteChanges(db: SQLiteDatabase, userId: string) {
 
       for (const place of places ?? []) {
         await db.runAsync(
-          `INSERT INTO date_places (id, date_entry_id, place_id, place_name, address, latitude, longitude, one_line_diary, hashtags_json, cover_photo_uri, normalized_search_text, sync_status, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'synced', ?, ?)
+          `INSERT INTO date_places (id, date_entry_id, place_id, place_name, address, latitude, longitude, one_line_diary, hashtags_json, cover_photo_uri, normalized_search_text, sync_status, owner_user_id, couple_id, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'synced', ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              date_entry_id = excluded.date_entry_id, place_id = excluded.place_id, place_name = excluded.place_name,
              address = excluded.address, latitude = excluded.latitude, longitude = excluded.longitude,
              one_line_diary = excluded.one_line_diary, hashtags_json = excluded.hashtags_json,
-             normalized_search_text = excluded.normalized_search_text, sync_status = 'synced', updated_at = excluded.updated_at`,
+             normalized_search_text = excluded.normalized_search_text, sync_status = 'synced',
+             owner_user_id = excluded.owner_user_id, couple_id = excluded.couple_id, updated_at = excluded.updated_at`,
           [
             place.id,
             place.date_entry_id,
@@ -224,6 +226,8 @@ export async function pullRemoteChanges(db: SQLiteDatabase, userId: string) {
             place.one_line_diary,
             JSON.stringify(place.hashtags ?? []),
             place.normalized_search_text,
+            place.user_id,
+            place.couple_id,
             place.created_at,
             place.updated_at,
           ]
