@@ -93,6 +93,18 @@ export function LoginScreen() {
                 <ThemedText style={styles.buttonLabel}>인증코드 보내기</ThemedText>
               )}
             </Pressable>
+
+            <Pressable
+              onPress={() => {
+                setErrorMessage('');
+                setStep('code');
+              }}
+              disabled={submitting || !email.trim()}
+            >
+              <ThemedText type="small" themeColor="textSecondary" style={styles.message}>
+                이미 받은 코드가 있어요
+              </ThemedText>
+            </Pressable>
           </>
         ) : (
           <>

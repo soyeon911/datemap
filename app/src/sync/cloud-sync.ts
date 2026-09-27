@@ -157,6 +157,28 @@ export async function deleteRemoteDatePlace(userId: string, datePlaceId: string)
   }
 }
 
+// Called right after a couple link is created or joined, so records made before
+// the link existed become visible to the partner too (couple_id is normally only
+// set at save time, per pushDatePlace above).
+export async function backfillCoupleId(db: SQLiteDatabase, userId: string, coupleId: string) {
+  try {
+    await supabase.from('date_entries').update({ couple_id: coupleId }).eq('user_id', userId);
+    await supabase.from('date_places').update({ couple_id: coupleId }).eq('user_id', userId);
+    await supabase.from('date_photos').update({ couple_id: coupleId }).eq('user_id', userId);
+
+    await db.runAsync('UPDATE date_entries SET couple_id = ? WHERE owner_user_id = ? OR owner_user_id IS NULL', [
+      coupleId,
+      userId,
+    ]);
+    await db.runAsync(
+      'UPDATE date_places SET couple_id = ?, owner_user_id = ? WHERE owner_user_id = ? OR owner_user_id IS NULL',
+      [coupleId, userId, userId]
+    );
+  } catch (error) {
+    console.error('[cloud-sync] backfillCoupleId failed:', error);
+  }
+}
+
 export async function pullRemoteChanges(db: SQLiteDatabase) {
   try {
     // No .eq('user_id', ...) filter here: RLS already scopes these selects to rows

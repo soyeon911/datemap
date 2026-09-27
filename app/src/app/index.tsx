@@ -32,7 +32,7 @@ import {
 import { useAuth } from '@/lib/auth-context';
 import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
-import { deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
+import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
 
 type DatabaseState = 'checking' | 'ready' | 'failed';
 type SelectedCoord = {
@@ -390,11 +390,16 @@ export default function HomeScreen() {
   }
 
   async function handleCreateInvite() {
+    if (!session) {
+      return;
+    }
+
     setIsCouplePending(true);
     setCoupleMessage(null);
 
     try {
-      await createInvite();
+      const created = await createInvite();
+      await backfillCoupleId(db, session.user.id, created.id);
     } catch (error) {
       setCoupleMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -403,6 +408,10 @@ export default function HomeScreen() {
   }
 
   async function handleJoinCouple() {
+    if (!session) {
+      return;
+    }
+
     const code = coupleCodeInput.trim().toUpperCase();
 
     if (!code) {
@@ -413,8 +422,9 @@ export default function HomeScreen() {
     setCoupleMessage(null);
 
     try {
-      await joinWithCode(code);
+      const joined = await joinWithCode(code);
       setCoupleCodeInput('');
+      await backfillCoupleId(db, session.user.id, joined.id);
       await pullRemoteChanges(db);
       await refreshDatePlaces();
     } catch (error) {
