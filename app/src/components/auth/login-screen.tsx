@@ -9,11 +9,15 @@ import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '@/lib/auth-context';
 
 export function LoginScreen() {
-  const { signInWithEmail } = useAuth();
+  const { signInWithEmail, authError } = useAuth();
   const theme = useTheme();
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+
+  // authError comes from the auth-callback deep link (e.g. magic link exchange failing),
+  // which can happen after this screen already showed "sent" for the original request.
+  const displayError = authError ?? (status === 'error' ? errorMessage : null);
 
   async function handleSendMagicLink() {
     const trimmedEmail = email.trim();
@@ -66,15 +70,15 @@ export function LoginScreen() {
           )}
         </Pressable>
 
-        {status === 'sent' && (
+        {status === 'sent' && !displayError && (
           <ThemedText type="small" style={styles.message}>
             {email.trim()}로 로그인 링크를 보냈어요. 메일함을 확인해주세요.
           </ThemedText>
         )}
 
-        {status === 'error' && (
+        {displayError && (
           <ThemedText type="small" style={[styles.message, styles.errorMessage]}>
-            {errorMessage}
+            {displayError}
           </ThemedText>
         )}
       </ThemedView>
