@@ -1,14 +1,13 @@
 import type { Session } from '@supabase/supabase-js';
-import * as Linking from 'expo-linking';
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 
 import { supabase } from '@/lib/supabase';
 
 type AuthContextValue = {
   session: Session | null;
   loading: boolean;
-  authError: string | null;
   signInWithEmail: (email: string) => Promise<void>;
+  verifyEmailCode: (email: string, code: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -17,23 +16,6 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const handledUrlRef = useRef<string | null>(null);
-
-  async function handleAuthCallbackUrl(url: string) {
-    if (!url.includes('code=') || handledUrlRef.current === url) {
-      return;
-    }
-
-    handledUrlRef.current = url;
-
-    const { error } = await supabase.auth.exchangeCodeForSession(url);
-
-    if (error) {
-      console.error('[auth] exchangeCodeForSession failed:', error.message);
-      setAuthError(error.message);
-    }
-  }
 
   useEffect(() => {
     let isMounted = true;
@@ -55,30 +37,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  useEffect(() => {
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        void handleAuthCallbackUrl(url);
-      }
-    });
-
-    const subscription = Linking.addEventListener('url', ({ url }) => {
-      void handleAuthCallbackUrl(url);
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
-
   async function signInWithEmail(email: string) {
-    setAuthError(null);
+    const { error } = await supabase.auth.signInWithOtp({ email });
 
-    const redirectTo = Linking.createURL('/');
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: redirectTo },
-    });
+    if (error) {
+      throw error;
+    }
+  }
+
+  async function verifyEmailCode(email: string, code: string) {
+    const { error } = await supabase.auth.verifyOtp({ email, token: code, type: 'email' });
 
     if (error) {
       throw error;
@@ -90,7 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ session, loading, authError, signInWithEmail, signOut }}>
+    <AuthContext.Provider value={{ session, loading, signInWithEmail, verifyEmailCode, signOut }}>
       {children}
     </AuthContext.Provider>
   );
