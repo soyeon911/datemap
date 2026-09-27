@@ -12,6 +12,7 @@
       "icon": "./assets/images/icon.png"
     },
     "android": {
+      "package": "com.datemap",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#EADCD8"
@@ -89,6 +90,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "48320988-0dac-4923-8787-ae766047f51c"
+      }
+    },
+    "owner": "sypark911"
   }
 }
