@@ -8,18 +8,18 @@ DearMap은 데이트한 장소를 지도 위에 저장하고, 사진과 메모�
 
 | 경로 | 목적 |
 | --- | --- |
-| `product/product-brief.md` | 서비스 목표, 사용자, 핵심 가치 |
-| `product/roadmap.md` | 단계별 개발 범위와 우선순위 |
-| `features/date-map-mvp.md` | 첫 번째 구현 기능인 데이트 지도 MVP 상세 |
-| `features/search-and-timeline.md` | 주별, 월별, 장소명, 키워드 검색 계획 |
-| `architecture/app-architecture.md` | 앱 구조, 화면 흐름, 확정 기술 스택 |
-| `architecture/data-model.md` | 장소, 데이트 기록, 사진, 태그 데이터 모델 |
-| `api/naver-map-api-plan.md` | 네이버 지도 API 연동 계획과 확인할 사항 |
-| `security/security-principles.md` | 보안 우선 원칙, 권한, 키 관리, 향후 로그인/커플 연동 기준 |
-| `implementation/phase-1-expo-sqlite-setup.md` | React Native + Expo 프로젝트 생성과 SQLite 초기 설정 계획 |
-| `decisions/0001-app-first-date-map.md` | 첫 번째 제품 의사결정 기록 |
-| `decisions/0002-tech-stack-and-security.md` | React Native + Expo, SQLite, 보안 우선 결정 |
-| `decisions/0003-ios-first-naver-map.md` | iOS 우선 네이버 지도 연동 결정 |
+| `docs/product/product-brief.md` | 서비스 목표, 사용자, 핵심 가치 |
+| `docs/product/roadmap.md` | 단계별 개발 범위와 우선순위 |
+| `docs/features/date-map-mvp.md` | 첫 번째 구현 기능인 데이트 지도 MVP 상세 |
+| `docs/features/search-and-timeline.md` | 주별, 월별, 장소명, 키워드 검색 계획 |
+| `docs/architecture/app-architecture.md` | 앱 구조, 화면 흐름, 확정 기술 스택 |
+| `docs/architecture/data-model.md` | 장소, 데이트 기록, 사진, 태그 데이터 모델 |
+| `docs/api/naver-map-api-plan.md` | 네이버 지도 API 연동 계획과 확인할 사항 |
+| `docs/security/security-principles.md` | 보안 우선 원칙, 권한, 키 관리, 향후 로그인/커플 연동 기준 |
+| `docs/implementation/phase-1-expo-sqlite-setup.md` | React Native + Expo 프로젝트 생성과 SQLite 초기 설정 계획 |
+| `docs/decisions/0001-app-first-date-map.md` | 첫 번째 제품 의사결정 기록 |
+| `docs/decisions/0002-tech-stack-and-security.md` | React Native + Expo, SQLite, 보안 우선 결정 |
+| `docs/decisions/0003-ios-first-naver-map.md` | iOS 우선 네이버 지도 연동 결정 |
 
 ## 현재 우선순위
 
