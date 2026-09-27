@@ -28,7 +28,9 @@ import {
   updateDatePlace,
   type SavedDatePlace,
 } from '@/db/date-cards';
+import { useAuth } from '@/lib/auth-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
+import { deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
 
 type DatabaseState = 'checking' | 'ready' | 'failed';
 type SelectedCoord = {
@@ -55,6 +57,8 @@ const filterPresetLabels: Record<FilterPreset, string> = {
 
 export default function HomeScreen() {
   const db = useSQLiteContext();
+  const { session } = useAuth();
+  const pulledUserIdRef = useRef<string | null>(null);
   const [databaseState, setDatabaseState] = useState<DatabaseState>('checking');
   const [datePlaceCount, setDatePlaceCount] = useState(0);
   const [selectedCoord, setSelectedCoord] = useState<SelectedCoord | null>(null);
@@ -159,6 +163,21 @@ export default function HomeScreen() {
       isMounted = false;
     };
   }, [db]);
+
+  useEffect(() => {
+    const userId = session?.user.id ?? null;
+
+    if (!userId || pulledUserIdRef.current === userId) {
+      return;
+    }
+
+    pulledUserIdRef.current = userId;
+
+    pullRemoteChanges(db, userId).then(() => refreshDatePlaces());
+    // refreshDatePlaces intentionally omitted: it's redefined every render, and the
+    // pulledUserIdRef guard above already ensures this only runs once per login.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, session]);
 
   useEffect(() => {
     if (filteredPlaces.length < 2) {
@@ -289,10 +308,17 @@ export default function HomeScreen() {
       coverPhotoUri,
     };
 
+    let savedDatePlaceId: string;
+
     if (editingDatePlace) {
       await updateDatePlace(db, editingDatePlace.id, nextPlaceInput);
+      savedDatePlaceId = editingDatePlace.id;
     } else {
-      await createDateCard(db, nextPlaceInput);
+      savedDatePlaceId = await createDateCard(db, nextPlaceInput);
+    }
+
+    if (session) {
+      void pushDatePlace(db, session.user.id, savedDatePlaceId);
     }
 
     await refreshDatePlaces();
@@ -303,6 +329,11 @@ export default function HomeScreen() {
 
   async function handleDeletePlace(place: SavedDatePlace) {
     await deleteDatePlace(db, place.id);
+
+    if (session) {
+      void deleteRemoteDatePlace(session.user.id, place.id);
+    }
+
     setSelectedSavedPlace(null);
     await refreshDatePlaces();
   }
@@ -344,15 +375,6 @@ export default function HomeScreen() {
 
     // 3. 시작일 이후 날짜면 종료일로 설정
     setFilterEndDate(nextDate);
-    setCalendarTarget('start');
-  }
-
-    if () {
-      setFilterEndDate(filterStartDate);
-      setFilterStartDate(nextDate);
-    } else {
-      setFilterEndDate(nextDate);
-    }
     setCalendarTarget('start');
   }
 

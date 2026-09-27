@@ -4,7 +4,19 @@ import { useColorScheme } from 'react-native';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import AppTabs from '@/components/app-tabs';
+import { LoginScreen } from '@/components/auth/login-screen';
 import { DATABASE_NAME, migrateDatabase } from '@/db/migrations';
+import { AuthProvider, useAuth } from '@/lib/auth-context';
+
+function AuthGate() {
+  const { session, loading } = useAuth();
+
+  if (loading) {
+    return null;
+  }
+
+  return session ? <AppTabs /> : <LoginScreen />;
+}
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -12,8 +24,10 @@ export default function TabLayout() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDatabase}>
-        <AnimatedSplashOverlay />
-        <AppTabs />
+        <AuthProvider>
+          <AnimatedSplashOverlay />
+          <AuthGate />
+        </AuthProvider>
       </SQLiteProvider>
     </ThemeProvider>
   );
