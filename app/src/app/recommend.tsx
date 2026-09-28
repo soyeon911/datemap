@@ -43,15 +43,9 @@ export default function RecommendScreen() {
   }
 
   async function openInNaverMap(place: NaverPlaceSearchResult) {
-    if (place.link) {
-      try {
-        await Linking.openURL(place.link);
-        return;
-      } catch {
-        // fall through to the map app / web search below
-      }
-    }
-
+    // place.link (from the Local Search API) is unreliable - it often points to a
+    // stale or mismatched page ("조건에 맞는 업체가 없습니다"). A name+address search
+    // always resolves to something real, so use that instead of the API's own link.
     const appUrl = `nmap://place?lat=${place.latitude}&lng=${place.longitude}&name=${encodeURIComponent(
       place.name
     )}&appname=com.datemap`;
