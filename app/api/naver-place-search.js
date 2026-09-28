@@ -129,6 +129,7 @@ async function searchLocalPlaces(query, credentials) {
         category: item.category ? stripHtml(item.category) : null,
         phone: item.telephone || null,
         description: item.description ? stripHtml(item.description) : null,
+        link: item.link || null,
       });
     } catch (error) {
       console.error('[naver-place-search] geocode item failed:', {

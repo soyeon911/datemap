@@ -42,6 +42,31 @@ export default function RecommendScreen() {
     }
   }
 
+  async function openInNaverMap(place: NaverPlaceSearchResult) {
+    if (place.link) {
+      try {
+        await Linking.openURL(place.link);
+        return;
+      } catch {
+        // fall through to the map app / web search below
+      }
+    }
+
+    const appUrl = `nmap://place?lat=${place.latitude}&lng=${place.longitude}&name=${encodeURIComponent(
+      place.name
+    )}&appname=com.datemap`;
+
+    try {
+      await Linking.openURL(appUrl);
+      return;
+    } catch {
+      // Naver Map isn't installed - fall back to a web search below.
+    }
+
+    const query = [place.name, place.address].filter(Boolean).join(' ');
+    await Linking.openURL(`https://search.naver.com/search.naver?query=${encodeURIComponent(query)}`);
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -148,6 +173,10 @@ export default function RecommendScreen() {
               {selectedPlace.description ? (
                 <Text style={styles.detailDescription}>{selectedPlace.description}</Text>
               ) : null}
+
+              <Pressable style={styles.naverButton} onPress={() => openInNaverMap(selectedPlace)}>
+                <Text style={styles.naverButtonText}>네이버에서 사진·리뷰 보기</Text>
+              </Pressable>
             </Pressable>
           ) : null}
         </Pressable>
@@ -323,5 +352,18 @@ const styles = StyleSheet.create({
     color: '#625850',
     fontSize: 13,
     lineHeight: 19,
+  },
+  naverButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+    minHeight: 46,
+    borderRadius: 10,
+    backgroundColor: '#03C75A',
+  },
+  naverButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '900',
   },
 });
