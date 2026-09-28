@@ -639,6 +639,8 @@ export default function HomeScreen() {
           <View style={styles.mainNaverMapPanel}>
             <SavedPlacesMap
               places={mapMarkers}
+              minRegionDelta={mapGroupMode === 'city' ? 0.25 : mapGroupMode === 'district' ? 0.05 : 0.03}
+              markerSize={mapGroupMode === 'city' ? 46 : mapGroupMode === 'district' ? 36 : 34}
               onSelectPlace={(place) => {
                 if (mapGroupMode !== 'none') {
                   const group = placeGroups.find((candidate) => candidate.key === place.id);

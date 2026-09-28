@@ -11,6 +11,8 @@ type SavedPlacesMapProps = {
   places: SavedPlacesMapPlace[];
   style?: StyleProp<ViewStyle>;
   onSelectPlace?: (place: SavedPlacesMapPlace) => void;
+  minRegionDelta?: number;
+  markerSize?: number;
 };
 
 export function SavedPlacesMap({ places, style, onSelectPlace }: SavedPlacesMapProps) {

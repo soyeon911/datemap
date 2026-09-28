@@ -16,12 +16,21 @@ type SavedPlacesMapProps = {
   places: SavedPlacesMapPlace[];
   style?: StyleProp<ViewStyle>;
   onSelectPlace?: (place: SavedPlacesMapPlace) => void;
+  minRegionDelta?: number;
+  markerSize?: number;
 };
 
-export function SavedPlacesMap({ places, style, onSelectPlace }: SavedPlacesMapProps) {
+export function SavedPlacesMap({
+  places,
+  style,
+  onSelectPlace,
+  minRegionDelta = 0.03,
+  markerSize = 34,
+}: SavedPlacesMapProps) {
   const [currentLocationRegion, setCurrentLocationRegion] = useState<MapRegion | null>(null);
   const [forcedRegion, setForcedRegion] = useState<MapRegion | null>(null);
-  const region = forcedRegion ?? (places.length > 0 ? getMapRegion(places) : currentLocationRegion ?? getDefaultKoreaRegion());
+  const region =
+    forcedRegion ?? (places.length > 0 ? getMapRegion(places, minRegionDelta) : currentLocationRegion ?? getDefaultKoreaRegion());
 
   useEffect(() => {
     let isMounted = true;
@@ -60,8 +69,8 @@ export function SavedPlacesMap({ places, style, onSelectPlace }: SavedPlacesMapP
             key={place.id}
             latitude={place.latitude}
             longitude={place.longitude}
-            width={34}
-            height={34}
+            width={markerSize}
+            height={markerSize}
             anchor={{ x: 0.5, y: 0.5 }}
             image={HEART_MARKER_IMAGE}
             isForceShowIcon
@@ -116,15 +125,15 @@ function getDefaultKoreaRegion(): MapRegion {
   };
 }
 
-function getMapRegion(places: SavedPlacesMapPlace[]): MapRegion {
+function getMapRegion(places: SavedPlacesMapPlace[], minDelta: number): MapRegion {
   const latitudes = places.map((place) => place.latitude);
   const longitudes = places.map((place) => place.longitude);
   const minLat = Math.min(...latitudes);
   const maxLat = Math.max(...latitudes);
   const minLng = Math.min(...longitudes);
   const maxLng = Math.max(...longitudes);
-  const latitudeDelta = Math.max(0.03, (maxLat - minLat) * 1.6);
-  const longitudeDelta = Math.max(0.03, (maxLng - minLng) * 1.6);
+  const latitudeDelta = Math.max(minDelta, (maxLat - minLat) * 1.6);
+  const longitudeDelta = Math.max(minDelta, (maxLng - minLng) * 1.6);
 
   return {
     latitude: (minLat + maxLat) / 2,
