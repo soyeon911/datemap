@@ -89,3 +89,37 @@ function normalizePlaceSearchResult(rawResult: RawPlaceSearchResult): NaverPlace
 function stripHtml(value: string) {
   return value.replace(/<[^>]*>/g, '').trim();
 }
+
+const NAVER_PLACE_ID_PATTERN = /place\.naver\.com\/([a-z]+)\/(\d+)/;
+
+// Not an official API - reads Naver's own mobile "place" search results page to find
+// the matching business's Naver Place id, since the Local Search API doesn't expose
+// one. Best-effort: returns null (caller should fall back) if the page layout changes
+// or nothing matches.
+export async function resolveNaverPlaceUrl(query: string): Promise<string | null> {
+  const trimmedQuery = query.trim();
+
+  if (!trimmedQuery) {
+    return null;
+  }
+
+  try {
+    const url = new URL('https://m.search.naver.com/search.naver');
+    url.searchParams.set('where', 'm_place');
+    url.searchParams.set('ie', 'utf8');
+    url.searchParams.set('query', trimmedQuery);
+
+    const response = await fetch(url.toString());
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const html = await response.text();
+    const match = html.match(NAVER_PLACE_ID_PATTERN);
+
+    return match ? `https://m.place.naver.com/${match[1]}/${match[2]}/home` : null;
+  } catch {
+    return null;
+  }
+}

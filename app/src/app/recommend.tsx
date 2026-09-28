@@ -4,7 +4,7 @@ import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, T
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DateMapView } from '@/components/map/date-map-view';
-import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
+import { resolveNaverPlaceUrl, searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 
 export default function RecommendScreen() {
   const [area, setArea] = useState('');
@@ -15,6 +15,7 @@ export default function RecommendScreen() {
   const [results, setResults] = useState<NaverPlaceSearchResult[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedPlace, setSelectedPlace] = useState<NaverPlaceSearchResult | null>(null);
+  const [isOpeningInNaver, setIsOpeningInNaver] = useState(false);
 
   async function handleSearch() {
     const query = [area, menu, mood]
@@ -45,17 +46,31 @@ export default function RecommendScreen() {
   async function openInNaverMap(place: NaverPlaceSearchResult) {
     const query = [place.name, place.address].filter(Boolean).join(' ');
 
-    // nmap://search lets the Naver Map app resolve the query against its own place
-    // database (so the real registered business page shows up, with reviews/photos),
-    // instead of nmap://place which just drops a plain marker at given coordinates.
-    try {
-      await Linking.openURL(`nmap://search?query=${encodeURIComponent(query)}&appname=com.datemap`);
-      return;
-    } catch {
-      // Naver Map isn't installed - fall back to a web search below.
-    }
+    setIsOpeningInNaver(true);
 
-    await Linking.openURL(`https://search.naver.com/search.naver?ie=utf8&query=${encodeURIComponent(query)}`);
+    try {
+      // Best case: jump straight to the matching business's real Naver Place page
+      // (reviews/photos/hours). If the Naver app is installed, opening its own
+      // domain here typically hands off to the app automatically via universal link.
+      const placeUrl = await resolveNaverPlaceUrl(query);
+
+      if (placeUrl) {
+        await Linking.openURL(placeUrl);
+        return;
+      }
+
+      // Couldn't resolve an exact place - let the Naver Map app's own search try.
+      try {
+        await Linking.openURL(`nmap://search?query=${encodeURIComponent(query)}&appname=com.datemap`);
+        return;
+      } catch {
+        // Naver Map isn't installed either - fall back to a plain web search.
+      }
+
+      await Linking.openURL(`https://search.naver.com/search.naver?ie=utf8&query=${encodeURIComponent(query)}`);
+    } finally {
+      setIsOpeningInNaver(false);
+    }
   }
 
   return (
@@ -165,8 +180,15 @@ export default function RecommendScreen() {
                 <Text style={styles.detailDescription}>{selectedPlace.description}</Text>
               ) : null}
 
-              <Pressable style={styles.naverButton} onPress={() => openInNaverMap(selectedPlace)}>
-                <Text style={styles.naverButtonText}>네이버에서 사진·리뷰 보기</Text>
+              <Pressable
+                style={styles.naverButton}
+                onPress={() => openInNaverMap(selectedPlace)}
+                disabled={isOpeningInNaver}>
+                {isOpeningInNaver ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.naverButtonText}>네이버에서 사진·리뷰 보기</Text>
+                )}
               </Pressable>
             </Pressable>
           ) : null}
