@@ -64,7 +64,7 @@ export default function RecommendScreen() {
     }
 
     const query = [place.name, place.address].filter(Boolean).join(' ');
-    await Linking.openURL(`https://search.naver.com/search.naver?query=${encodeURIComponent(query)}`);
+    await Linking.openURL(`https://search.naver.com/search.naver?ie=utf8&query=${encodeURIComponent(query)}`);
   }
 
   return (
