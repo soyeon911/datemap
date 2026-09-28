@@ -43,21 +43,18 @@ export default function RecommendScreen() {
   }
 
   async function openInNaverMap(place: NaverPlaceSearchResult) {
-    // place.link (from the Local Search API) is unreliable - it often points to a
-    // stale or mismatched page ("조건에 맞는 업체가 없습니다"). A name+address search
-    // always resolves to something real, so use that instead of the API's own link.
-    const appUrl = `nmap://place?lat=${place.latitude}&lng=${place.longitude}&name=${encodeURIComponent(
-      place.name
-    )}&appname=com.datemap`;
+    const query = [place.name, place.address].filter(Boolean).join(' ');
 
+    // nmap://search lets the Naver Map app resolve the query against its own place
+    // database (so the real registered business page shows up, with reviews/photos),
+    // instead of nmap://place which just drops a plain marker at given coordinates.
     try {
-      await Linking.openURL(appUrl);
+      await Linking.openURL(`nmap://search?query=${encodeURIComponent(query)}&appname=com.datemap`);
       return;
     } catch {
       // Naver Map isn't installed - fall back to a web search below.
     }
 
-    const query = [place.name, place.address].filter(Boolean).join(' ');
     await Linking.openURL(`https://search.naver.com/search.naver?ie=utf8&query=${encodeURIComponent(query)}`);
   }
 
