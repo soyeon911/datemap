@@ -45,6 +45,14 @@ type SelectedPhoto = {
 type CalendarTarget = 'start' | 'end';
 type DatePickerMode = 'range' | 'week';
 type FilterPreset = 'all' | 'this_week' | 'this_month' | 'last_30_days';
+type MapGroupMode = 'none' | 'city' | 'district';
+type PlaceGroup = {
+  key: string;
+  label: string;
+  latitude: number;
+  longitude: number;
+  places: SavedDatePlace[];
+};
 
 const today = new Date().toISOString().slice(0, 10);
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
@@ -87,6 +95,8 @@ export default function HomeScreen() {
   const [filterPreset, setFilterPreset] = useState<FilterPreset>('all');
   const [isFilterDropdownVisible, setIsFilterDropdownVisible] = useState(false);
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
+  const [mapGroupMode, setMapGroupMode] = useState<MapGroupMode>('none');
+  const [selectedGroup, setSelectedGroup] = useState<PlaceGroup | null>(null);
   const [datePickerMode, setDatePickerMode] = useState<DatePickerMode>('range');
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [selectedSavedPlace, setSelectedSavedPlace] = useState<SavedDatePlace | null>(null);
@@ -123,6 +133,24 @@ export default function HomeScreen() {
       return true;
     });
   }, [filterEndDate, filterStartDate, savedPlaces]);
+
+  const placeGroups = useMemo(
+    () => (mapGroupMode === 'none' ? [] : groupPlacesByRegion(filteredPlaces, mapGroupMode)),
+    [filteredPlaces, mapGroupMode]
+  );
+
+  const mapMarkers = useMemo(() => {
+    if (mapGroupMode === 'none') {
+      return filteredPlaces;
+    }
+
+    return placeGroups.map((group) => ({
+      id: group.key,
+      placeName: group.label,
+      latitude: group.latitude,
+      longitude: group.longitude,
+    }));
+  }, [mapGroupMode, filteredPlaces, placeGroups]);
 
   const activeDates = useMemo(() => Array.from(new Set(savedPlaces.map((place) => place.date))), [savedPlaces]);
   const filterLabel = useMemo(() => {
@@ -610,14 +638,33 @@ export default function HomeScreen() {
 
           <View style={styles.mainNaverMapPanel}>
             <SavedPlacesMap
-              places={filteredPlaces}
+              places={mapMarkers}
               onSelectPlace={(place) => {
+                if (mapGroupMode !== 'none') {
+                  const group = placeGroups.find((candidate) => candidate.key === place.id);
+
+                  if (group) {
+                    setSelectedGroup(group);
+                  }
+
+                  return;
+                }
+
                 const matchedPlace = filteredPlaces.find((savedPlace) => savedPlace.id === place.id);
                 if (matchedPlace) {
                   openPlaceDetail(matchedPlace);
                 }
               }}
             />
+            <Pressable
+              style={styles.mapGroupToggleButton}
+              onPress={() =>
+                setMapGroupMode((current) => (current === 'none' ? 'city' : current === 'city' ? 'district' : 'none'))
+              }>
+              <Text style={styles.mapGroupToggleButtonText}>
+                {mapGroupMode === 'none' ? '전체보기' : mapGroupMode === 'city' ? '시/도별' : '시/군/구별'}
+              </Text>
+            </Pressable>
             {filteredPlaces.length === 0 ? (
               <View style={styles.emptyMapOverlay}>
                 <Text style={styles.emptyMapText}>저장된 장소가 없습니다.</Text>
@@ -1127,6 +1174,39 @@ export default function HomeScreen() {
           ) : null}
         </Pressable>
       </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={selectedGroup !== null}
+        onRequestClose={() => setSelectedGroup(null)}>
+        <Pressable style={styles.settingsOverlay} onPress={() => setSelectedGroup(null)}>
+          {selectedGroup ? (
+            <Pressable style={styles.settingsSheet} onPress={(event) => event.stopPropagation()}>
+              <View style={styles.settingsHeader}>
+                <TextSectionTitle>{selectedGroup.label}</TextSectionTitle>
+                <Pressable style={styles.modalCloseButton} onPress={() => setSelectedGroup(null)}>
+                  <Text style={styles.modalCloseButtonText}>닫기</Text>
+                </Pressable>
+              </View>
+              <ScrollView style={styles.groupPlaceList}>
+                {selectedGroup.places.map((place) => (
+                  <Pressable
+                    key={place.id}
+                    style={styles.groupPlaceRow}
+                    onPress={() => {
+                      setSelectedGroup(null);
+                      openPlaceDetail(place);
+                    }}>
+                    <Text style={styles.groupPlaceRowTitle}>{place.placeName}</Text>
+                    <Text style={styles.groupPlaceRowDate}>{place.date}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </Pressable>
+          ) : null}
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1321,6 +1401,51 @@ function getOrderedPhotoUris(place: SavedDatePlace) {
   }
 
   return [place.coverPhotoUri, ...photoUris.filter((uri) => uri !== place.coverPhotoUri)];
+}
+
+function parseRegionFromAddress(address: string | null): { city: string; district: string } | null {
+  if (!address) {
+    return null;
+  }
+
+  const parts = address.trim().split(/\s+/);
+
+  if (parts.length < 2) {
+    return null;
+  }
+
+  return { city: parts[0], district: parts[1] };
+}
+
+function groupPlacesByRegion(places: SavedDatePlace[], level: 'city' | 'district'): PlaceGroup[] {
+  const groups = new Map<string, { latSum: number; lngSum: number; places: SavedDatePlace[] }>();
+
+  for (const place of places) {
+    const region = parseRegionFromAddress(place.address);
+
+    if (!region) {
+      continue;
+    }
+
+    const key = level === 'city' ? region.city : `${region.city} ${region.district}`;
+    const existing = groups.get(key);
+
+    if (existing) {
+      existing.latSum += place.latitude;
+      existing.lngSum += place.longitude;
+      existing.places.push(place);
+    } else {
+      groups.set(key, { latSum: place.latitude, lngSum: place.longitude, places: [place] });
+    }
+  }
+
+  return Array.from(groups.entries()).map(([key, value]) => ({
+    key,
+    label: `${key} (${value.places.length})`,
+    latitude: value.latSum / value.places.length,
+    longitude: value.lngSum / value.places.length,
+    places: value.places,
+  }));
 }
 
 function getYearOptions(centerYear: number) {
@@ -1636,6 +1761,45 @@ const styles = StyleSheet.create({
     color: '#625850',
     fontSize: 13,
     lineHeight: 18,
+  },
+  mapGroupToggleButton: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    borderWidth: 1,
+    borderColor: '#D8CEC3',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  mapGroupToggleButtonText: {
+    color: '#A86873',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  groupPlaceList: {
+    maxHeight: 360,
+  },
+  groupPlaceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 10,
+    backgroundColor: '#F1E5E1',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 8,
+  },
+  groupPlaceRowTitle: {
+    color: '#342725',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  groupPlaceRowDate: {
+    color: '#7A6F65',
+    fontSize: 13,
+    fontWeight: '600',
   },
   emptyMapOverlay: {
     position: 'absolute',
