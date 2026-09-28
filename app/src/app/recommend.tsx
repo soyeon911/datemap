@@ -1,22 +1,46 @@
 import { SymbolView } from 'expo-symbols';
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type Recommendation = {
-  type: '식당' | '카페' | '데이트 장소';
-  title: string;
-  description: string;
-  searchHint: string;
-};
+import { DateMapView } from '@/components/map/date-map-view';
+import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 
 export default function RecommendScreen() {
   const [area, setArea] = useState('');
   const [mood, setMood] = useState('');
   const [menu, setMenu] = useState('');
-  const [isGenerated, setIsGenerated] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [results, setResults] = useState<NaverPlaceSearchResult[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
+  const [selectedPlace, setSelectedPlace] = useState<NaverPlaceSearchResult | null>(null);
 
-  const recommendations = useMemo(() => buildRecommendations(area, mood, menu), [area, menu, mood]);
+  async function handleSearch() {
+    const query = [area, menu, mood]
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .join(' ');
+
+    if (!query) {
+      setErrorMessage('지역, 분위기, 메뉴 중 하나는 입력해주세요.');
+      return;
+    }
+
+    setIsSearching(true);
+    setErrorMessage(null);
+    setHasSearched(true);
+
+    try {
+      const nextResults = await searchNaverPlaces(query);
+      setResults(nextResults);
+    } catch (error) {
+      setResults([]);
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsSearching(false);
+    }
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -60,61 +84,76 @@ export default function RecommendScreen() {
             placeholderTextColor="#9B9187"
             style={styles.input}
           />
-          <Pressable style={styles.primaryButton} onPress={() => setIsGenerated(true)}>
-            <Text style={styles.primaryButtonText}>추천 조합 만들기</Text>
+          <Pressable style={styles.primaryButton} onPress={handleSearch} disabled={isSearching}>
+            {isSearching ? (
+              <ActivityIndicator color="#F8EFEC" />
+            ) : (
+              <Text style={styles.primaryButtonText}>추천 받기</Text>
+            )}
           </Pressable>
+          {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
         </View>
 
-        <View style={styles.panel}>
-          <Text style={styles.sectionTitle}>추천 기준</Text>
-          <Text style={styles.body}>
-            다음 단계에서는 네이버 지도 장소 검색을 기반으로 지역 내 식당, 카페, 데이트 장소를 찾고 메뉴와 최신 리뷰를
-            참고해 후보를 정렬합니다.
-          </Text>
-        </View>
+        {hasSearched && !isSearching && !errorMessage && results.length === 0 ? (
+          <View style={styles.panel}>
+            <Text style={styles.body}>조건에 맞는 장소를 찾지 못했어요. 다른 지역이나 메뉴로 다시 시도해보세요.</Text>
+          </View>
+        ) : null}
 
-        {isGenerated ? (
+        {results.length > 0 ? (
           <View style={styles.resultList}>
-            {recommendations.map((item) => (
-              <View key={item.type} style={styles.resultCard}>
-                <Text style={styles.resultType}>{item.type}</Text>
-                <Text style={styles.resultTitle}>{item.title}</Text>
-                <Text style={styles.resultDescription}>{item.description}</Text>
-                <Text style={styles.searchHint}>{item.searchHint}</Text>
-              </View>
+            {results.map((place) => (
+              <Pressable key={place.id} style={styles.resultCard} onPress={() => setSelectedPlace(place)}>
+                {place.category ? <Text style={styles.resultType}>{place.category}</Text> : null}
+                <Text style={styles.resultTitle}>{place.name}</Text>
+                {place.address ? <Text style={styles.resultDescription}>{place.address}</Text> : null}
+              </Pressable>
             ))}
           </View>
         ) : null}
       </ScrollView>
+
+      <Modal
+        animationType="fade"
+        transparent
+        visible={selectedPlace !== null}
+        onRequestClose={() => setSelectedPlace(null)}>
+        <Pressable style={styles.detailOverlay} onPress={() => setSelectedPlace(null)}>
+          {selectedPlace ? (
+            <Pressable style={styles.detailSheet} onPress={(event) => event.stopPropagation()}>
+              <View style={styles.detailHeader}>
+                {selectedPlace.category ? <Text style={styles.resultType}>{selectedPlace.category}</Text> : null}
+                <Pressable style={styles.detailCloseButton} onPress={() => setSelectedPlace(null)}>
+                  <Text style={styles.detailCloseButtonText}>닫기</Text>
+                </Pressable>
+              </View>
+
+              <Text style={styles.detailTitle}>{selectedPlace.name}</Text>
+
+              <DateMapView
+                style={styles.detailMap}
+                selectedCoord={{ latitude: selectedPlace.latitude, longitude: selectedPlace.longitude }}
+              />
+
+              {selectedPlace.address ? (
+                <Text style={styles.detailInfoRow}>📍 {selectedPlace.address}</Text>
+              ) : null}
+
+              {selectedPlace.phone ? (
+                <Pressable onPress={() => Linking.openURL(`tel:${selectedPlace.phone}`)}>
+                  <Text style={[styles.detailInfoRow, styles.detailPhone]}>📞 {selectedPlace.phone}</Text>
+                </Pressable>
+              ) : null}
+
+              {selectedPlace.description ? (
+                <Text style={styles.detailDescription}>{selectedPlace.description}</Text>
+              ) : null}
+            </Pressable>
+          ) : null}
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
-}
-
-function buildRecommendations(area: string, mood: string, menu: string): Recommendation[] {
-  const normalizedArea = area.trim() || '원하는 지역';
-  const normalizedMood = mood.trim() || '따뜻한 분위기';
-  const normalizedMenu = menu.trim() || '가볍게 먹기 좋은 메뉴';
-
-  return [
-    {
-      type: '식당',
-      title: `${normalizedArea} ${normalizedMenu} 식당`,
-      description: `${normalizedMood} 데이트의 시작으로 적당한 식사 장소를 찾습니다.`,
-      searchHint: `검색 후보: ${normalizedArea} ${normalizedMenu} 맛집`,
-    },
-    {
-      type: '카페',
-      title: `${normalizedArea} 대화하기 좋은 카페`,
-      description: '식사 후 사진과 한 줄 일기를 남기기 좋은 카페를 이어서 추천합니다.',
-      searchHint: `검색 후보: ${normalizedArea} ${normalizedMood} 카페`,
-    },
-    {
-      type: '데이트 장소',
-      title: `${normalizedArea} 산책/전시 코스`,
-      description: '카페 전후로 이동하기 좋은 거리의 산책, 전시, 야경 장소를 함께 묶습니다.',
-      searchHint: `검색 후보: ${normalizedArea} 데이트 코스`,
-    },
-  ];
 }
 
 const styles = StyleSheet.create({
@@ -190,6 +229,8 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
     borderRadius: 10,
     backgroundColor: '#A86873',
     paddingVertical: 14,
@@ -198,6 +239,11 @@ const styles = StyleSheet.create({
     color: '#F8EFEC',
     fontSize: 15,
     fontWeight: '900',
+  },
+  errorText: {
+    color: '#B3443C',
+    fontSize: 13,
+    fontWeight: '700',
   },
   resultList: {
     gap: 12,
@@ -225,9 +271,57 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  searchHint: {
-    color: '#7A5057',
+  detailOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(52, 39, 37, 0.45)',
+  },
+  detailSheet: {
+    gap: 10,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    backgroundColor: '#FBF4F1',
+    padding: 18,
+    paddingBottom: 32,
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  detailCloseButton: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#F1E5E1',
+  },
+  detailCloseButtonText: {
+    color: '#625850',
     fontSize: 13,
     fontWeight: '800',
+  },
+  detailTitle: {
+    color: '#342725',
+    fontSize: 22,
+    fontWeight: '900',
+  },
+  detailMap: {
+    height: 180,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  detailInfoRow: {
+    color: '#4A423C',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  detailPhone: {
+    color: '#3C87F7',
+    fontWeight: '700',
+  },
+  detailDescription: {
+    color: '#625850',
+    fontSize: 13,
+    lineHeight: 19,
   },
 });

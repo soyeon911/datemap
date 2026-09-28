@@ -5,6 +5,8 @@ export type NaverPlaceSearchResult = {
   latitude: number;
   longitude: number;
   category?: string | null;
+  phone?: string | null;
+  description?: string | null;
 };
 
 type RawPlaceSearchResult = {
@@ -20,6 +22,8 @@ type RawPlaceSearchResult = {
   lat?: number | string | null;
   lng?: number | string | null;
   category?: string | null;
+  phone?: string | null;
+  description?: string | null;
 };
 
 const placeSearchEndpoint =
@@ -77,6 +81,8 @@ function normalizePlaceSearchResult(rawResult: RawPlaceSearchResult): NaverPlace
     latitude,
     longitude,
     category: rawResult.category ?? null,
+    phone: rawResult.phone ?? null,
+    description: rawResult.description ?? null,
   };
 }
 
