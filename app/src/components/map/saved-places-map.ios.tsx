@@ -1,7 +1,9 @@
-import { NaverMapMarkerOverlay, NaverMapView } from '@mj-studio/react-native-naver-map';
+import { NaverMapMarkerOverlay, NaverMapPolygonOverlay, NaverMapView } from '@mj-studio/react-native-naver-map';
 import * as Location from 'expo-location';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+
+import type { Coord } from '@/data/korea-boundaries';
 
 const HEART_MARKER_IMAGE = require('@/assets/images/map-heart-marker.png');
 
@@ -12,12 +14,18 @@ export type SavedPlacesMapPlace = {
   longitude: number;
 };
 
+export type SavedPlacesMapRegionBoundary = {
+  key: string;
+  rings: Coord[][];
+};
+
 type SavedPlacesMapProps = {
   places: SavedPlacesMapPlace[];
   style?: StyleProp<ViewStyle>;
   onSelectPlace?: (place: SavedPlacesMapPlace) => void;
   minRegionDelta?: number;
   markerSize?: number;
+  regionBoundaries?: SavedPlacesMapRegionBoundary[];
 };
 
 export function SavedPlacesMap({
@@ -26,6 +34,7 @@ export function SavedPlacesMap({
   onSelectPlace,
   minRegionDelta = 0.03,
   markerSize = 34,
+  regionBoundaries = [],
 }: SavedPlacesMapProps) {
   const [currentLocationRegion, setCurrentLocationRegion] = useState<MapRegion | null>(null);
   const [forcedRegion, setForcedRegion] = useState<MapRegion | null>(null);
@@ -64,6 +73,17 @@ export function SavedPlacesMap({
         isIndoorEnabled={false}
         isRotateGesturesEnabled={false}
         isTiltGesturesEnabled={false}>
+        {regionBoundaries.flatMap((boundary) =>
+          boundary.rings.map((ring, ringIndex) => (
+            <NaverMapPolygonOverlay
+              key={`${boundary.key}_${ringIndex}`}
+              coords={ring}
+              color="rgba(168,104,115,0.18)"
+              outlineWidth={2}
+              outlineColor="#A86873"
+            />
+          ))
+        )}
         {places.map((place) => (
           <NaverMapMarkerOverlay
             key={place.id}

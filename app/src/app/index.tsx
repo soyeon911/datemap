@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { DateMapView } from '@/components/map/date-map-view';
 import { SavedPlacesMap } from '@/components/map/saved-places-map';
+import { findDistrictBoundary, findProvinceBoundary, type Coord } from '@/data/korea-boundaries';
 import {
   countDateCards,
   createDateCard,
@@ -48,6 +49,7 @@ type FilterPreset = 'all' | 'this_week' | 'this_month' | 'last_30_days';
 type MapGroupMode = 'none' | 'city' | 'district';
 type PlaceGroup = {
   key: string;
+  regionName: string;
   label: string;
   latitude: number;
   longitude: number;
@@ -151,6 +153,26 @@ export default function HomeScreen() {
       longitude: group.longitude,
     }));
   }, [mapGroupMode, filteredPlaces, placeGroups]);
+
+  const regionBoundaries = useMemo(() => {
+    const boundaries: { key: string; rings: Coord[][] }[] = [];
+
+    if (mapGroupMode === 'none') {
+      return boundaries;
+    }
+
+    const findBoundary = mapGroupMode === 'city' ? findProvinceBoundary : findDistrictBoundary;
+
+    for (const group of placeGroups) {
+      const rings = findBoundary(group.regionName);
+
+      if (rings) {
+        boundaries.push({ key: group.key, rings });
+      }
+    }
+
+    return boundaries;
+  }, [mapGroupMode, placeGroups]);
 
   const activeDates = useMemo(() => Array.from(new Set(savedPlaces.map((place) => place.date))), [savedPlaces]);
   const filterLabel = useMemo(() => {
@@ -641,6 +663,7 @@ export default function HomeScreen() {
               places={mapMarkers}
               minRegionDelta={mapGroupMode === 'city' ? 0.25 : mapGroupMode === 'district' ? 0.05 : 0.03}
               markerSize={mapGroupMode === 'city' ? 46 : mapGroupMode === 'district' ? 36 : 34}
+              regionBoundaries={regionBoundaries}
               onSelectPlace={(place) => {
                 if (mapGroupMode !== 'none') {
                   const group = placeGroups.find((candidate) => candidate.key === place.id);
@@ -1420,7 +1443,7 @@ function parseRegionFromAddress(address: string | null): { city: string; distric
 }
 
 function groupPlacesByRegion(places: SavedDatePlace[], level: 'city' | 'district'): PlaceGroup[] {
-  const groups = new Map<string, { latSum: number; lngSum: number; places: SavedDatePlace[] }>();
+  const groups = new Map<string, { regionName: string; latSum: number; lngSum: number; places: SavedDatePlace[] }>();
 
   for (const place of places) {
     const region = parseRegionFromAddress(place.address);
@@ -1429,6 +1452,7 @@ function groupPlacesByRegion(places: SavedDatePlace[], level: 'city' | 'district
       continue;
     }
 
+    const regionName = level === 'city' ? region.city : region.district;
     const key = level === 'city' ? region.city : `${region.city} ${region.district}`;
     const existing = groups.get(key);
 
@@ -1437,12 +1461,13 @@ function groupPlacesByRegion(places: SavedDatePlace[], level: 'city' | 'district
       existing.lngSum += place.longitude;
       existing.places.push(place);
     } else {
-      groups.set(key, { latSum: place.latitude, lngSum: place.longitude, places: [place] });
+      groups.set(key, { regionName, latSum: place.latitude, lngSum: place.longitude, places: [place] });
     }
   }
 
   return Array.from(groups.entries()).map(([key, value]) => ({
     key,
+    regionName: value.regionName,
     label: `${key} (${value.places.length})`,
     latitude: value.latSum / value.places.length,
     longitude: value.lngSum / value.places.length,

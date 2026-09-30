@@ -1,10 +1,17 @@
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import type { Coord } from '@/data/korea-boundaries';
+
 export type SavedPlacesMapPlace = {
   id: string;
   placeName: string;
   latitude: number;
   longitude: number;
+};
+
+export type SavedPlacesMapRegionBoundary = {
+  key: string;
+  rings: Coord[][];
 };
 
 type SavedPlacesMapProps = {
@@ -13,6 +20,7 @@ type SavedPlacesMapProps = {
   onSelectPlace?: (place: SavedPlacesMapPlace) => void;
   minRegionDelta?: number;
   markerSize?: number;
+  regionBoundaries?: SavedPlacesMapRegionBoundary[];
 };
 
 export function SavedPlacesMap({ places, style, onSelectPlace }: SavedPlacesMapProps) {
