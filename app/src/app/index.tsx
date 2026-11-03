@@ -20,6 +20,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { FullScreenPhotoModal } from '@/components/home/full-screen-photo-modal';
+import { modalStyles } from '@/components/home/modal-styles';
+import { PlaceGroupModal } from '@/components/home/place-group-modal';
 import { SavedPlaceCard, savedPlaceStyles } from '@/components/home/saved-place-card';
 import {
   Section,
@@ -773,8 +775,8 @@ export default function HomeScreen() {
                 <TextLabel>날짜 필터</TextLabel>
                 <TextSectionTitle>기간 또는 주차 선택</TextSectionTitle>
               </View>
-              <Pressable style={styles.modalCloseButton} onPress={() => setIsDatePickerVisible(false)}>
-                <Text style={styles.modalCloseButtonText}>닫기</Text>
+              <Pressable style={modalStyles.modalCloseButton} onPress={() => setIsDatePickerVisible(false)}>
+                <Text style={modalStyles.modalCloseButtonText}>닫기</Text>
               </Pressable>
             </View>
 
@@ -840,15 +842,15 @@ export default function HomeScreen() {
         transparent
         visible={isSettingsVisible}
         onRequestClose={() => setIsSettingsVisible(false)}>
-        <Pressable style={styles.settingsOverlay} onPress={() => setIsSettingsVisible(false)}>
-          <Pressable style={styles.settingsSheet} onPress={(event) => event.stopPropagation()}>
-            <View style={styles.settingsHeader}>
+        <Pressable style={modalStyles.settingsOverlay} onPress={() => setIsSettingsVisible(false)}>
+          <Pressable style={modalStyles.settingsSheet} onPress={(event) => event.stopPropagation()}>
+            <View style={modalStyles.settingsHeader}>
               <View>
                 <TextLabel>DearMap</TextLabel>
                 <TextSectionTitle>설정 및 정보</TextSectionTitle>
               </View>
-              <Pressable style={styles.modalCloseButton} onPress={() => setIsSettingsVisible(false)}>
-                <Text style={styles.modalCloseButtonText}>닫기</Text>
+              <Pressable style={modalStyles.modalCloseButton} onPress={() => setIsSettingsVisible(false)}>
+                <Text style={modalStyles.modalCloseButtonText}>닫기</Text>
               </Pressable>
             </View>
             <View style={styles.settingsRow}>
@@ -936,8 +938,8 @@ export default function HomeScreen() {
                 <TextLabel>{editingDatePlace ? '데이트 장소 수정' : '새 데이트 장소'}</TextLabel>
                 <TextTitle>{editingDatePlace ? '장소 기록 수정' : '장소 기록 추가'}</TextTitle>
               </View>
-              <Pressable style={styles.modalCloseButton} onPress={closeAddPlaceModal}>
-                <Text style={styles.modalCloseButtonText}>닫기</Text>
+              <Pressable style={modalStyles.modalCloseButton} onPress={closeAddPlaceModal}>
+                <Text style={modalStyles.modalCloseButtonText}>닫기</Text>
               </Pressable>
             </View>
 
@@ -1192,38 +1194,14 @@ export default function HomeScreen() {
 
       <FullScreenPhotoModal uri={fullScreenPhotoUri} onClose={() => setFullScreenPhotoUri(null)} />
 
-      <Modal
-        animationType="fade"
-        transparent
-        visible={selectedGroup !== null}
-        onRequestClose={() => setSelectedGroup(null)}>
-        <Pressable style={styles.settingsOverlay} onPress={() => setSelectedGroup(null)}>
-          {selectedGroup ? (
-            <Pressable style={styles.settingsSheet} onPress={(event) => event.stopPropagation()}>
-              <View style={styles.settingsHeader}>
-                <TextSectionTitle>{selectedGroup.label}</TextSectionTitle>
-                <Pressable style={styles.modalCloseButton} onPress={() => setSelectedGroup(null)}>
-                  <Text style={styles.modalCloseButtonText}>닫기</Text>
-                </Pressable>
-              </View>
-              <ScrollView style={styles.groupPlaceList}>
-                {selectedGroup.places.map((place) => (
-                  <Pressable
-                    key={place.id}
-                    style={styles.groupPlaceRow}
-                    onPress={() => {
-                      setSelectedGroup(null);
-                      openPlaceDetail(place);
-                    }}>
-                    <Text style={styles.groupPlaceRowTitle}>{place.placeName}</Text>
-                    <Text style={styles.groupPlaceRowDate}>{place.date}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </Pressable>
-          ) : null}
-        </Pressable>
-      </Modal>
+      <PlaceGroupModal
+        group={selectedGroup}
+        onClose={() => setSelectedGroup(null)}
+        onSelectPlace={(place) => {
+          setSelectedGroup(null);
+          openPlaceDetail(place);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -1539,24 +1517,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D2BEB8',
   },
-  settingsOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(52,39,37,0.36)',
-  },
-  settingsSheet: {
-    gap: 14,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    backgroundColor: '#F8EFEC',
-    padding: 18,
-  },
-  settingsHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 14,
-  },
   settingsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1601,29 +1561,6 @@ const styles = StyleSheet.create({
     color: '#A86873',
     fontSize: 13,
     fontWeight: '800',
-  },
-  groupPlaceList: {
-    maxHeight: 360,
-  },
-  groupPlaceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 10,
-    backgroundColor: '#F1E5E1',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 8,
-  },
-  groupPlaceRowTitle: {
-    color: '#342725',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  groupPlaceRowDate: {
-    color: '#7A6F65',
-    fontSize: 13,
-    fontWeight: '600',
   },
   emptyMapOverlay: {
     position: 'absolute',
@@ -1958,17 +1895,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 12,
-  },
-  modalCloseButton: {
-    borderRadius: 999,
-    backgroundColor: '#E5D4CF',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  modalCloseButtonText: {
-    color: '#4F463E',
-    fontSize: 13,
-    fontWeight: '800',
   },
   modalContent: {
     paddingHorizontal: 18,
