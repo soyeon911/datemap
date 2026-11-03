@@ -2,7 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { SymbolView } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -19,6 +19,17 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import {
+  Section,
+  TextBadge,
+  TextBody,
+  TextButton,
+  TextLabel,
+  TextSecondaryButton,
+  TextSectionTitle,
+  TextTitle,
+  textStyles,
+} from '@/components/home/text';
 import { DateMapView } from '@/components/map/date-map-view';
 import { SavedPlacesMap } from '@/components/map/saved-places-map';
 import { findDistrictBoundary, findProvinceBoundary, type Coord } from '@/data/korea-boundaries';
@@ -619,8 +630,8 @@ export default function HomeScreen() {
           <View style={styles.brandBlock}>
             <Image source={dateMapLogo} style={styles.headerLogo} />
             <View style={styles.brandText}>
-              <Text style={[styles.title, isDarkMode && styles.titleDark]}>DearMap</Text>
-              <Text style={[styles.label, isDarkMode && styles.labelDark]}>함께한 순간을 장소와 함께 기록해요</Text>
+              <Text style={[textStyles.title, isDarkMode && styles.titleDark]}>DearMap</Text>
+              <Text style={[textStyles.label, isDarkMode && styles.labelDark]}>함께한 순간을 장소와 함께 기록해요</Text>
             </View>
           </View>
           <View style={styles.headerActions}>
@@ -1435,38 +1446,6 @@ async function copyPhotoToAppStorage(uri: string, index: number) {
   }
 }
 
-function Section({ children }: { children: ReactNode }) {
-  return <View style={styles.section}>{children}</View>;
-}
-
-function TextLabel({ children }: { children: ReactNode }) {
-  return <Text style={styles.label}>{children}</Text>;
-}
-
-function TextTitle({ children }: { children: ReactNode }) {
-  return <Text style={styles.title}>{children}</Text>;
-}
-
-function TextSectionTitle({ children }: { children: ReactNode }) {
-  return <Text style={styles.sectionTitle}>{children}</Text>;
-}
-
-function TextBody({ children }: { children: ReactNode }) {
-  return <Text style={styles.body}>{children}</Text>;
-}
-
-function TextBadge({ children }: { children: ReactNode }) {
-  return <Text style={styles.badgeText}>{children}</Text>;
-}
-
-function TextButton({ children }: { children: ReactNode }) {
-  return <Text style={styles.buttonText}>{children}</Text>;
-}
-
-function TextSecondaryButton({ children }: { children: ReactNode }) {
-  return <Text style={styles.secondaryButtonText}>{children}</Text>;
-}
-
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1513,19 +1492,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 8,
   },
-  label: {
-    color: '#73685C',
-    fontSize: 13,
-    fontWeight: '700',
-  },
   labelDark: {
     color: '#C9BDB0',
-  },
-  title: {
-    color: '#342725',
-    fontSize: 28,
-    fontWeight: '800',
-    marginTop: 4,
   },
   titleDark: {
     color: '#EADCD8',
@@ -1535,11 +1503,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#E6D4D0',
     paddingHorizontal: 12,
     paddingVertical: 7,
-  },
-  badgeText: {
-    color: '#7C4F58',
-    fontSize: 12,
-    fontWeight: '800',
   },
   darkModeButton: {
     minWidth: 64,
@@ -1605,29 +1568,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  section: {
-    borderRadius: 10,
-    backgroundColor: '#F8EFEC',
-    borderWidth: 1,
-    borderColor: '#D8C4BE',
-    padding: 15,
-    gap: 10,
-  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-  },
-  sectionTitle: {
-    color: '#342725',
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  body: {
-    color: '#625850',
-    fontSize: 14,
-    lineHeight: 20,
   },
   mainNaverMapPanel: {
     height: 252,
@@ -2038,11 +1983,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#A86873',
     paddingVertical: 15,
   },
-  buttonText: {
-    color: '#F8EFEC',
-    fontSize: 16,
-    fontWeight: '800',
-  },
   pickerOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
@@ -2238,11 +2178,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#E8D8D4',
     paddingHorizontal: 12,
     paddingVertical: 8,
-  },
-  secondaryButtonText: {
-    color: '#7A5057',
-    fontSize: 13,
-    fontWeight: '800',
   },
   photoRow: {
     gap: 10,
