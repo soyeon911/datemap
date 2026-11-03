@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CalendarPicker } from '@/components/home/calendar-picker';
 import { FullScreenPhotoModal } from '@/components/home/full-screen-photo-modal';
 import { modalStyles } from '@/components/home/modal-styles';
 import { PlaceGroupModal } from '@/components/home/place-group-modal';
@@ -36,6 +37,7 @@ import {
 } from '@/components/home/text';
 import { DateMapView } from '@/components/map/date-map-view';
 import { SavedPlacesMap } from '@/components/map/saved-places-map';
+import { today } from '@/constants/today';
 import { findDistrictBoundary, findProvinceBoundary, type Coord } from '@/data/korea-boundaries';
 import {
   countDateCards,
@@ -49,7 +51,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
-import { getLast30DaysRange, getMonthRange, getWeekRange, getYearOptions, toDateString } from '@/utils/date';
+import { getLast30DaysRange, getMonthRange, getWeekRange } from '@/utils/date';
 import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
 import { groupPlacesByRegion, type PlaceGroup } from '@/utils/place-group';
 
@@ -66,9 +68,6 @@ type DatePickerMode = 'range' | 'week';
 type FilterPreset = 'all' | 'this_week' | 'this_month' | 'last_30_days';
 type MapGroupMode = 'none' | 'city' | 'district';
 
-const today = toDateString(new Date());
-const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
-const monthLabels = Array.from({ length: 12 }, (_, index) => `${index + 1}월`);
 const dateMapLogo = require('@/assets/images/splash-icon.png');
 const filterPresetLabels: Record<FilterPreset, string> = {
   all: '전체 기간',
@@ -1206,157 +1205,6 @@ export default function HomeScreen() {
   );
 }
 
-function CalendarPicker({
-  selectedDate,
-  onSelectDate,
-  activeDates = [],
-  rangeStartDate,
-  rangeEndDate,
-}: {
-  selectedDate: string;
-  onSelectDate: (date: string) => void;
-  activeDates?: string[];
-  rangeStartDate?: string;
-  rangeEndDate?: string;
-}) {
-  const safeSelectedDate = selectedDate || today;
-  const selected = new Date(`${safeSelectedDate}T00:00:00`);
-  const [displayYear, setDisplayYear] = useState(selected.getFullYear());
-  const [displayMonth, setDisplayMonth] = useState(selected.getMonth());
-  const [openSelector, setOpenSelector] = useState<'year' | 'month' | null>(null);
-  const yearOptions = useMemo(() => getYearOptions(displayYear), [displayYear]);
-
-  const year = displayYear;
-  const month = displayMonth;
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDay = new Date(year, month, 1).getDay();
-  const cells = [
-    ...Array.from({ length: firstDay }, (_, index) => ({ key: `empty_start_${index}`, day: null })),
-    ...Array.from({ length: daysInMonth }, (_, index) => ({ key: `day_${index + 1}`, day: index + 1 })),
-  ];
-  const trailingEmptyCellCount = (7 - (cells.length % 7)) % 7;
-  const paddedCells = [
-    ...cells,
-    ...Array.from({ length: trailingEmptyCellCount }, (_, index) => ({ key: `empty_end_${index}`, day: null })),
-  ];
-  const calendarWeeks = Array.from({ length: Math.ceil(paddedCells.length / 7) }, (_, weekIndex) =>
-    paddedCells.slice(weekIndex * 7, weekIndex * 7 + 7)
-  );
-
-  return (
-    <View style={styles.calendar}>
-      <View style={styles.calendarSelectorRow}>
-        <View style={styles.calendarSelectorGroup}>
-          <Pressable
-            style={styles.calendarSelectorButton}
-            onPress={() => setOpenSelector(openSelector === 'year' ? null : 'year')}>
-            <Text style={styles.calendarSelectorText}>{year}년</Text>
-            <Text style={styles.calendarSelectorChevron}>⌄</Text>
-          </Pressable>
-          {openSelector === 'year' ? (
-            <ScrollView
-              style={styles.calendarSelectorMenu}
-              nestedScrollEnabled
-              showsVerticalScrollIndicator={false}>
-              {yearOptions.map((yearOption) => (
-                <Pressable
-                  key={yearOption}
-                  style={[styles.calendarSelectorItem, yearOption === year && styles.calendarSelectorItemActive]}
-                  onPress={() => {
-                    setDisplayYear(yearOption);
-                    setOpenSelector(null);
-                  }}>
-                  <Text
-                    style={[
-                      styles.calendarSelectorItemText,
-                      yearOption === year && styles.calendarSelectorItemTextActive,
-                    ]}>
-                    {yearOption}년
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          ) : null}
-        </View>
-
-        <View style={styles.calendarSelectorGroup}>
-          <Pressable
-            style={styles.calendarSelectorButton}
-            onPress={() => setOpenSelector(openSelector === 'month' ? null : 'month')}>
-            <Text style={styles.calendarSelectorText}>{month + 1}월</Text>
-            <Text style={styles.calendarSelectorChevron}>⌄</Text>
-          </Pressable>
-          {openSelector === 'month' ? (
-            <ScrollView
-              style={styles.calendarSelectorMenu}
-              nestedScrollEnabled
-              showsVerticalScrollIndicator={false}>
-              {monthLabels.map((monthLabel, monthIndex) => (
-                <Pressable
-                  key={monthLabel}
-                  style={[styles.calendarSelectorItem, monthIndex === month && styles.calendarSelectorItemActive]}
-                  onPress={() => {
-                    setDisplayMonth(monthIndex);
-                    setOpenSelector(null);
-                  }}>
-                  <Text
-                    style={[
-                      styles.calendarSelectorItemText,
-                      monthIndex === month && styles.calendarSelectorItemTextActive,
-                    ]}>
-                    {monthLabel}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          ) : null}
-        </View>
-      </View>
-      <View style={styles.weekdayRow}>
-        {weekdays.map((weekday) => (
-          <Text key={weekday} style={styles.weekdayText}>
-            {weekday}
-          </Text>
-        ))}
-      </View>
-      <View style={styles.calendarGrid}>
-        {calendarWeeks.map((week, weekIndex) => (
-          <View key={`week_${weekIndex}`} style={styles.calendarWeekRow}>
-            {week.map((cell) => {
-              if (!cell.day) {
-                return <View key={cell.key} style={styles.calendarCell} />;
-              }
-
-              const cellDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(cell.day).padStart(2, '0')}`;
-              const isSelected = cellDate === safeSelectedDate;
-              const isInRange = Boolean(
-                rangeStartDate && rangeEndDate && cellDate >= rangeStartDate && cellDate <= rangeEndDate
-              );
-              const isActiveDate = activeDates.includes(cellDate);
-
-              return (
-                <Pressable
-                  key={cell.key}
-                  style={[
-                    styles.calendarCell,
-                    isInRange && styles.calendarCellInRange,
-                    isSelected && styles.calendarCellSelected,
-                  ]}
-                  onPress={() => onSelectDate(cellDate)}>
-                  <Text style={[styles.calendarDayText, isSelected && styles.calendarDayTextSelected]}>{cell.day}</Text>
-                  {isActiveDate ? (
-                    <View style={[styles.activeDateDot, isSelected && styles.activeDateDotSelected]} />
-                  ) : null}
-                </Pressable>
-              );
-            })}
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
 async function copyPhotoToAppStorage(uri: string, index: number) {
   if (!FileSystem.documentDirectory) {
     return uri;
@@ -1674,119 +1522,6 @@ const styles = StyleSheet.create({
   },
   periodButtonTextActive: {
     color: '#A86873',
-  },
-  calendar: {
-    gap: 8,
-    zIndex: 30,
-  },
-  calendarSelectorRow: {
-    flexDirection: 'row',
-    gap: 8,
-    zIndex: 40,
-  },
-  calendarSelectorGroup: {
-    position: 'relative',
-    flex: 1,
-    zIndex: 40,
-  },
-  calendarSelectorButton: {
-    minHeight: 42,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(222, 212, 201, 0.78)',
-    backgroundColor: 'rgba(251, 250, 247, 0.68)',
-    paddingHorizontal: 12,
-  },
-  calendarSelectorText: {
-    color: '#342725',
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  calendarSelectorChevron: {
-    color: '#625850',
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  calendarSelectorMenu: {
-    position: 'absolute',
-    top: 48,
-    left: 0,
-    right: 0,
-    zIndex: 60,
-    maxHeight: 238,
-    overflow: 'hidden',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#D8C4BE',
-    backgroundColor: 'rgba(255, 255, 255, 0.96)',
-  },
-  calendarSelectorItem: {
-    minHeight: 38,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E7D2CD',
-  },
-  calendarSelectorItemActive: {
-    backgroundColor: '#EBD8DC',
-  },
-  calendarSelectorItemText: {
-    color: '#3E3833',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  calendarSelectorItemTextActive: {
-    color: '#A86873',
-  },
-  weekdayRow: {
-    flexDirection: 'row',
-  },
-  weekdayText: {
-    flex: 1,
-    color: '#8B8076',
-    fontSize: 11,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  calendarGrid: {
-    gap: 4,
-  },
-  calendarWeekRow: {
-    flexDirection: 'row',
-  },
-  calendarCell: {
-    flex: 1,
-    minHeight: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  calendarCellInRange: {
-    backgroundColor: '#EBD8DC',
-  },
-  calendarCellSelected: {
-    borderRadius: 8,
-    backgroundColor: '#A86873',
-  },
-  calendarDayText: {
-    color: '#3E3833',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  calendarDayTextSelected: {
-    color: '#F8EFEC',
-  },
-  activeDateDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#B96A76',
-    marginTop: 2,
-  },
-  activeDateDotSelected: {
-    backgroundColor: '#F8EFEC',
   },
   bottomDock: {
     gap: 12,
