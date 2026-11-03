@@ -35,6 +35,7 @@ import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
 import { getLast30DaysRange, getMonthRange, getWeekRange, getYearOptions, toDateString } from '@/utils/date';
+import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
 import { groupPlacesByRegion, type PlaceGroup } from '@/utils/place-group';
 
 type DatabaseState = 'checking' | 'ready' | 'failed';
@@ -1411,16 +1412,6 @@ function SavedPlaceCard({ place, onPress }: { place: SavedDatePlace; onPress: ()
   );
 }
 
-function getOrderedPhotoUris(place: SavedDatePlace) {
-  const photoUris = place.photoUris.length > 0 ? place.photoUris : place.coverPhotoUri ? [place.coverPhotoUri] : [];
-
-  if (!place.coverPhotoUri) {
-    return photoUris;
-  }
-
-  return [place.coverPhotoUri, ...photoUris.filter((uri) => uri !== place.coverPhotoUri)];
-}
-
 async function copyPhotoToAppStorage(uri: string, index: number) {
   if (!FileSystem.documentDirectory) {
     return uri;
@@ -1442,13 +1433,6 @@ async function copyPhotoToAppStorage(uri: string, index: number) {
   } catch {
     return uri;
   }
-}
-
-function getPhotoExtension(uri: string) {
-  const cleanUri = uri.split('?')[0];
-  const match = cleanUri.match(/\.(jpe?g|png|heic|webp)$/i);
-
-  return match?.[0] ?? '.jpg';
 }
 
 function Section({ children }: { children: ReactNode }) {
