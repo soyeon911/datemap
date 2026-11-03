@@ -38,6 +38,11 @@ export function getLast30DaysRange(endDateString: string) {
   };
 }
 
+// Uses the device's local calendar date. toISOString() would convert to UTC first,
+// which turns local midnight in UTC+9 into the previous day.
 export function toDateString(date: Date) {
-  return date.toISOString().slice(0, 10);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${date.getFullYear()}-${month}-${day}`;
 }
