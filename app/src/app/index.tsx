@@ -35,6 +35,7 @@ import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
 import { getLast30DaysRange, getMonthRange, getWeekRange, getYearOptions, toDateString } from '@/utils/date';
+import { groupPlacesByRegion, type PlaceGroup } from '@/utils/place-group';
 
 type DatabaseState = 'checking' | 'ready' | 'failed';
 type SelectedCoord = {
@@ -48,14 +49,6 @@ type CalendarTarget = 'start' | 'end';
 type DatePickerMode = 'range' | 'week';
 type FilterPreset = 'all' | 'this_week' | 'this_month' | 'last_30_days';
 type MapGroupMode = 'none' | 'city' | 'district';
-type PlaceGroup = {
-  key: string;
-  regionName: string;
-  label: string;
-  latitude: number;
-  longitude: number;
-  places: SavedDatePlace[];
-};
 
 const today = toDateString(new Date());
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
@@ -1426,53 +1419,6 @@ function getOrderedPhotoUris(place: SavedDatePlace) {
   }
 
   return [place.coverPhotoUri, ...photoUris.filter((uri) => uri !== place.coverPhotoUri)];
-}
-
-function parseRegionFromAddress(address: string | null): { city: string; district: string } | null {
-  if (!address) {
-    return null;
-  }
-
-  const parts = address.trim().split(/\s+/);
-
-  if (parts.length < 2) {
-    return null;
-  }
-
-  return { city: parts[0], district: parts[1] };
-}
-
-function groupPlacesByRegion(places: SavedDatePlace[], level: 'city' | 'district'): PlaceGroup[] {
-  const groups = new Map<string, { regionName: string; latSum: number; lngSum: number; places: SavedDatePlace[] }>();
-
-  for (const place of places) {
-    const region = parseRegionFromAddress(place.address);
-
-    if (!region) {
-      continue;
-    }
-
-    const regionName = level === 'city' ? region.city : region.district;
-    const key = level === 'city' ? region.city : `${region.city} ${region.district}`;
-    const existing = groups.get(key);
-
-    if (existing) {
-      existing.latSum += place.latitude;
-      existing.lngSum += place.longitude;
-      existing.places.push(place);
-    } else {
-      groups.set(key, { regionName, latSum: place.latitude, lngSum: place.longitude, places: [place] });
-    }
-  }
-
-  return Array.from(groups.entries()).map(([key, value]) => ({
-    key,
-    regionName: value.regionName,
-    label: `${key} (${value.places.length})`,
-    latitude: value.latSum / value.places.length,
-    longitude: value.lngSum / value.places.length,
-    places: value.places,
-  }));
 }
 
 async function copyPhotoToAppStorage(uri: string, index: number) {
