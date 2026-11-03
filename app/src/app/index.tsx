@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { SavedPlaceCard, savedPlaceStyles } from '@/components/home/saved-place-card';
 import {
   Section,
   TextBadge,
@@ -1162,22 +1163,22 @@ export default function HomeScreen() {
                 </View>
               ) : (
                 <View style={styles.detailImagePlaceholder}>
-                  <Text style={styles.savedCardImagePlaceholderText}>대표 사진 없음</Text>
+                  <Text style={savedPlaceStyles.savedCardImagePlaceholderText}>대표 사진 없음</Text>
                 </View>
               )}
 
               <View style={styles.detailContent}>
                 <Text style={styles.detailTitle}>{selectedSavedPlace.placeName}</Text>
                 <Text style={styles.detailDate}>{selectedSavedPlace.date}</Text>
-                <Text style={styles.savedCardMeta}>사진 {selectedSavedPlace.photoCount}장 저장됨</Text>
+                <Text style={savedPlaceStyles.savedCardMeta}>사진 {selectedSavedPlace.photoCount}장 저장됨</Text>
                 {selectedSavedPlace.oneLineDiary ? (
                   <Text style={styles.detailDiary}>{selectedSavedPlace.oneLineDiary}</Text>
                 ) : null}
                 {selectedSavedPlace.hashtags.length > 0 ? (
-                  <View style={styles.savedHashtagRow}>
+                  <View style={savedPlaceStyles.savedHashtagRow}>
                     {selectedSavedPlace.hashtags.map((tag) => (
-                      <View key={tag} style={styles.savedHashtagChip}>
-                        <Text style={styles.savedHashtagText}>#{tag}</Text>
+                      <View key={tag} style={savedPlaceStyles.savedHashtagChip}>
+                        <Text style={savedPlaceStyles.savedHashtagText}>#{tag}</Text>
                       </View>
                     ))}
                   </View>
@@ -1389,37 +1390,6 @@ function CalendarPicker({
         ))}
       </View>
     </View>
-  );
-}
-
-function SavedPlaceCard({ place, onPress }: { place: SavedDatePlace; onPress: () => void }) {
-  return (
-    <Pressable style={styles.savedCard} onPress={onPress}>
-      {place.coverPhotoUri ? (
-        <Image source={{ uri: place.coverPhotoUri }} style={styles.savedCardImage} resizeMode="cover" />
-      ) : (
-        <View style={styles.savedCardImagePlaceholder}>
-          <Text style={styles.savedCardImagePlaceholderText}>사진 없음</Text>
-        </View>
-      )}
-      <View style={styles.savedCardContent}>
-        <Text style={styles.savedCardTitle}>{place.placeName}</Text>
-        <Text style={styles.savedCardDate}>{place.date}</Text>
-        <Text style={styles.savedCardDiary} numberOfLines={2}>
-          {place.oneLineDiary || '한 줄 일기가 없습니다.'}
-        </Text>
-        <Text style={styles.savedCardMeta}>사진 {place.photoCount}장</Text>
-        {place.hashtags.length > 0 ? (
-          <View style={styles.savedHashtagRow}>
-            {place.hashtags.slice(0, 3).map((tag) => (
-              <View key={tag} style={styles.savedHashtagChip}>
-                <Text style={styles.savedHashtagText}>#{tag}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-      </View>
-    </Pressable>
   );
 }
 
@@ -1901,73 +1871,6 @@ const styles = StyleSheet.create({
   savedCardRow: {
     gap: 12,
     paddingRight: 18,
-  },
-  savedCard: {
-    width: 286,
-    height: 272,
-    overflow: 'hidden',
-    borderRadius: 12,
-    backgroundColor: '#F8EFEC',
-    borderWidth: 1,
-    borderColor: '#D8C4BE',
-  },
-  savedCardImage: {
-    width: '100%',
-    height: 116,
-  },
-  savedCardImagePlaceholder: {
-    height: 116,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#E5D4CF',
-  },
-  savedCardImagePlaceholderText: {
-    color: '#7C7065',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  savedCardContent: {
-    flex: 1,
-    padding: 13,
-    gap: 7,
-  },
-  savedCardTitle: {
-    color: '#342725',
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  savedCardDate: {
-    color: '#7C7065',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  savedCardDiary: {
-    minHeight: 36,
-    color: '#3E3833',
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 18,
-  },
-  savedCardMeta: {
-    color: '#8B8076',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  savedHashtagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  savedHashtagChip: {
-    borderRadius: 999,
-    backgroundColor: '#E7D2CD',
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-  },
-  savedHashtagText: {
-    color: '#6F5143',
-    fontSize: 12,
-    fontWeight: '800',
   },
   emptySavedCard: {
     borderRadius: 10,
