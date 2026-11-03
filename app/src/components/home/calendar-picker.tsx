@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { today } from '@/constants/today';
+import { buildCalendarWeeks, formatCalendarDate } from '@/utils/calendar';
 import { getYearOptions } from '@/utils/date';
 
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
@@ -29,20 +30,7 @@ export function CalendarPicker({
 
   const year = displayYear;
   const month = displayMonth;
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDay = new Date(year, month, 1).getDay();
-  const cells = [
-    ...Array.from({ length: firstDay }, (_, index) => ({ key: `empty_start_${index}`, day: null })),
-    ...Array.from({ length: daysInMonth }, (_, index) => ({ key: `day_${index + 1}`, day: index + 1 })),
-  ];
-  const trailingEmptyCellCount = (7 - (cells.length % 7)) % 7;
-  const paddedCells = [
-    ...cells,
-    ...Array.from({ length: trailingEmptyCellCount }, (_, index) => ({ key: `empty_end_${index}`, day: null })),
-  ];
-  const calendarWeeks = Array.from({ length: Math.ceil(paddedCells.length / 7) }, (_, weekIndex) =>
-    paddedCells.slice(weekIndex * 7, weekIndex * 7 + 7)
-  );
+  const calendarWeeks = buildCalendarWeeks(year, month);
 
   return (
     <View style={styles.calendar}>
@@ -128,7 +116,7 @@ export function CalendarPicker({
                 return <View key={cell.key} style={styles.calendarCell} />;
               }
 
-              const cellDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(cell.day).padStart(2, '0')}`;
+              const cellDate = formatCalendarDate(year, month, cell.day);
               const isSelected = cellDate === safeSelectedDate;
               const isInRange = Boolean(
                 rangeStartDate && rangeEndDate && cellDate >= rangeStartDate && cellDate <= rangeEndDate
