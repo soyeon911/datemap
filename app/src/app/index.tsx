@@ -34,6 +34,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
+import { getLast30DaysRange, getMonthRange, getWeekRange, getYearOptions, toDateString } from '@/utils/date';
 
 type DatabaseState = 'checking' | 'ready' | 'failed';
 type SelectedCoord = {
@@ -56,7 +57,7 @@ type PlaceGroup = {
   places: SavedDatePlace[];
 };
 
-const today = new Date().toISOString().slice(0, 10);
+const today = toDateString(new Date());
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
 const monthLabels = Array.from({ length: 12 }, (_, index) => `${index + 1}월`);
 const dateMapLogo = require('@/assets/images/splash-icon.png');
@@ -550,10 +551,9 @@ export default function HomeScreen() {
       return;
     }
 
-    const startDate = new Date(`${today}T00:00:00`);
-    startDate.setDate(startDate.getDate() - 29);
-    setFilterStartDate(toDateString(startDate));
-    setFilterEndDate(today);
+    const range = getLast30DaysRange(today);
+    setFilterStartDate(range.start);
+    setFilterEndDate(range.end);
   }
 
   function selectWeekFilter(nextDate: string) {
@@ -1475,10 +1475,6 @@ function groupPlacesByRegion(places: SavedDatePlace[], level: 'city' | 'district
   }));
 }
 
-function getYearOptions(centerYear: number) {
-  return Array.from({ length: 11 }, (_, index) => centerYear - 5 + index);
-}
-
 async function copyPhotoToAppStorage(uri: string, index: number) {
   if (!FileSystem.documentDirectory) {
     return uri;
@@ -1507,36 +1503,6 @@ function getPhotoExtension(uri: string) {
   const match = cleanUri.match(/\.(jpe?g|png|heic|webp)$/i);
 
   return match?.[0] ?? '.jpg';
-}
-
-function getWeekRange(dateString: string) {
-  const date = new Date(`${dateString}T00:00:00`);
-  const day = date.getDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  const start = new Date(date);
-  start.setDate(date.getDate() + mondayOffset);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-
-  return {
-    start: toDateString(start),
-    end: toDateString(end),
-  };
-}
-
-function getMonthRange(dateString: string) {
-  const date = new Date(`${dateString}T00:00:00`);
-  const start = new Date(date.getFullYear(), date.getMonth(), 1);
-  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-
-  return {
-    start: toDateString(start),
-    end: toDateString(end),
-  };
-}
-
-function toDateString(date: Date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function Section({ children }: { children: ReactNode }) {
