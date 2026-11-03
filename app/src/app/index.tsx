@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { FullScreenPhotoModal } from '@/components/home/full-screen-photo-modal';
 import { SavedPlaceCard, savedPlaceStyles } from '@/components/home/saved-place-card';
 import {
   Section,
@@ -1189,22 +1190,7 @@ export default function HomeScreen() {
         </Pressable>
       </Modal>
 
-      <Modal
-        animationType="fade"
-        transparent
-        visible={fullScreenPhotoUri !== null}
-        onRequestClose={() => setFullScreenPhotoUri(null)}>
-        <Pressable style={styles.fullScreenPhotoOverlay} onPress={() => setFullScreenPhotoUri(null)}>
-          {fullScreenPhotoUri ? (
-            <>
-              <Image source={{ uri: fullScreenPhotoUri }} style={styles.fullScreenPhoto} resizeMode="contain" />
-              <View style={styles.fullScreenPhotoClose}>
-                <Text style={styles.fullScreenPhotoCloseText}>닫기</Text>
-              </View>
-            </>
-          ) : null}
-        </Pressable>
-      </Modal>
+      <FullScreenPhotoModal uri={fullScreenPhotoUri} onClose={() => setFullScreenPhotoUri(null)} />
 
       <Modal
         animationType="fade"
@@ -2282,31 +2268,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#E5D4CF',
-  },
-  fullScreenPhotoOverlay: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.92)',
-    padding: 18,
-  },
-  fullScreenPhoto: {
-    width: '100%',
-    height: '82%',
-  },
-  fullScreenPhotoClose: {
-    position: 'absolute',
-    top: 58,
-    right: 18,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  fullScreenPhotoCloseText: {
-    color: '#F8EFEC',
-    fontSize: 14,
-    fontWeight: '900',
   },
   detailContent: {
     padding: 18,
