@@ -4,16 +4,12 @@ jest.mock('@/lib/supabase', () => ({
   supabase: { auth: { getSession: () => mockGetSession() } },
 }));
 
+// The endpoint is read when the module loads, so load it after setting the variable.
 function loadService() {
   process.env.EXPO_PUBLIC_NAVER_PLACE_SEARCH_ENDPOINT = 'https://proxy.test/api/naver-place-search';
+  jest.resetModules();
 
-  let service: typeof import('@/services/naver-place-search') | undefined;
-
-  jest.isolateModules(() => {
-    service = require('@/services/naver-place-search');
-  });
-
-  return service!;
+  return jest.requireActual<typeof import('@/services/naver-place-search')>('@/services/naver-place-search');
 }
 
 describe('searchNaverPlaces', () => {
@@ -29,7 +25,9 @@ describe('searchNaverPlaces', () => {
     mockGetSession.mockResolvedValue({ data: { session: { access_token: 'token-123' } } });
     mockFetch.mockResolvedValue({ ok: true, json: async () => ({ results: [] }) });
 
-    await loadService().searchNaverPlaces('카페');
+    const { searchNaverPlaces } = loadService();
+
+    await searchNaverPlaces('카페');
 
     const [url, options] = mockFetch.mock.calls[0];
 
@@ -40,12 +38,16 @@ describe('searchNaverPlaces', () => {
   it('does not call the proxy without a session', async () => {
     mockGetSession.mockResolvedValue({ data: { session: null } });
 
-    await expect(loadService().searchNaverPlaces('카페')).rejects.toThrow('PLACE_SEARCH_SESSION_REQUIRED');
+    const { searchNaverPlaces } = loadService();
+
+    await expect(searchNaverPlaces('카페')).rejects.toThrow('PLACE_SEARCH_SESSION_REQUIRED');
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('skips the session lookup for a blank query', async () => {
-    await expect(loadService().searchNaverPlaces('   ')).resolves.toEqual([]);
+    const { searchNaverPlaces } = loadService();
+
+    await expect(searchNaverPlaces('   ')).resolves.toEqual([]);
     expect(mockGetSession).not.toHaveBeenCalled();
   });
 });
