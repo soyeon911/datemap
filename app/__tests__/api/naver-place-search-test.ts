@@ -115,6 +115,31 @@ describe('naver-place-search proxy', () => {
     expect(response.body).toMatchObject({ results: [{ latitude: 37.56, longitude: 126.97 }] });
   });
 
+  it('keeps upstream error details in the server log only', async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, status: 200 })
+      .mockResolvedValueOnce(jsonResponse(401, { detail: 'upstream-detail-marker' }));
+    process.env.VERCEL_ENV = 'production';
+    const response = createResponse();
+
+    await handler(createRequest('Bearer good-token'), response);
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toEqual({ error: 'NAVER_PLACE_SEARCH_FAILED' });
+    expect(String((console.error as jest.Mock).mock.calls[0][1])).toContain('upstream-detail-marker');
+  });
+
+  it('does not reveal which Naver setting is missing', async () => {
+    process.env.NAVER_MAP_CLIENT_SECRET = '';
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 200 });
+    const response = createResponse();
+
+    await handler(createRequest('Bearer good-token'), response);
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toEqual({ error: 'NAVER_MAP_CREDENTIALS_REQUIRED' });
+  });
+
   it('allows the Authorization header in CORS preflight', async () => {
     const response = createResponse();
 

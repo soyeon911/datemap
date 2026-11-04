@@ -221,12 +221,8 @@ module.exports = async function handler(request, response) {
     };
 
     if (!credentials.naverMapClientId || !credentials.naverMapClientSecret) {
-      response.status(500).json({
-        error: 'NAVER_MAP_CREDENTIALS_REQUIRED',
-        hasNaverMapClientId: Boolean(credentials.naverMapClientId),
-        hasNaverMapClientSecret: Boolean(credentials.naverMapClientSecret),
-        vercelEnv: process.env.VERCEL_ENV || null,
-      });
+      console.error('[naver-place-search] Naver Map credentials are not set');
+      response.status(500).json({ error: 'NAVER_MAP_CREDENTIALS_REQUIRED' });
       return;
     }
 
@@ -242,10 +238,6 @@ module.exports = async function handler(request, response) {
   } catch (error) {
     console.error('[naver-place-search] failed:', error);
 
-    response.status(500).json({
-      error: 'NAVER_PLACE_SEARCH_FAILED',
-      message: error instanceof Error ? error.message : String(error),
-      vercelEnv: process.env.VERCEL_ENV || null,
-    });
+    response.status(500).json({ error: 'NAVER_PLACE_SEARCH_FAILED' });
   }
 };
