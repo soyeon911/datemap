@@ -9,6 +9,21 @@ export type PlaceGroup = {
   places: SavedDatePlace[];
 };
 
+export type MapGroupMode = 'none' | 'city' | 'district';
+
+export const mapGroupModeConfig: Record<
+  MapGroupMode,
+  { minRegionDelta: number; markerSize: number; toggleLabel: string }
+> = {
+  none: { minRegionDelta: 0.03, markerSize: 34, toggleLabel: '전체보기' },
+  city: { minRegionDelta: 0.25, markerSize: 46, toggleLabel: '시/도별' },
+  district: { minRegionDelta: 0.05, markerSize: 36, toggleLabel: '시/군/구별' },
+};
+
+export function getNextMapGroupMode(mode: MapGroupMode): MapGroupMode {
+  return mode === 'none' ? 'city' : mode === 'city' ? 'district' : 'none';
+}
+
 export function parseRegionFromAddress(address: string | null): { city: string; district: string } | null {
   if (!address) {
     return null;

@@ -53,7 +53,13 @@ import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
 import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
-import { groupPlacesByRegion, type PlaceGroup } from '@/utils/place-group';
+import {
+  getNextMapGroupMode,
+  groupPlacesByRegion,
+  mapGroupModeConfig,
+  type MapGroupMode,
+  type PlaceGroup,
+} from '@/utils/place-group';
 
 type SelectedCoord = {
   latitude: number;
@@ -63,7 +69,6 @@ type SelectedPhoto = {
   uri: string;
 };
 type DatePickerMode = 'range' | 'week';
-type MapGroupMode = 'none' | 'city' | 'district';
 
 const dateMapLogo = require('@/assets/images/splash-icon.png');
 export default function HomeScreen() {
@@ -124,6 +129,8 @@ export default function HomeScreen() {
         .filter(Boolean),
     [hashtagText]
   );
+
+  const mapModeConfig = mapGroupModeConfig[mapGroupMode];
 
   const placeGroups = useMemo(
     () => (mapGroupMode === 'none' ? [] : groupPlacesByRegion(filteredPlaces, mapGroupMode)),
@@ -495,8 +502,8 @@ export default function HomeScreen() {
           <View style={styles.mainNaverMapPanel}>
             <SavedPlacesMap
               places={mapMarkers}
-              minRegionDelta={mapGroupMode === 'city' ? 0.25 : mapGroupMode === 'district' ? 0.05 : 0.03}
-              markerSize={mapGroupMode === 'city' ? 46 : mapGroupMode === 'district' ? 36 : 34}
+              minRegionDelta={mapModeConfig.minRegionDelta}
+              markerSize={mapModeConfig.markerSize}
               regionBoundaries={regionBoundaries}
               onSelectPlace={(place) => {
                 if (mapGroupMode !== 'none') {
@@ -517,12 +524,8 @@ export default function HomeScreen() {
             />
             <Pressable
               style={styles.mapGroupToggleButton}
-              onPress={() =>
-                setMapGroupMode((current) => (current === 'none' ? 'city' : current === 'city' ? 'district' : 'none'))
-              }>
-              <Text style={styles.mapGroupToggleButtonText}>
-                {mapGroupMode === 'none' ? '전체보기' : mapGroupMode === 'city' ? '시/도별' : '시/군/구별'}
-              </Text>
+              onPress={() => setMapGroupMode(getNextMapGroupMode)}>
+              <Text style={styles.mapGroupToggleButtonText}>{mapModeConfig.toggleLabel}</Text>
             </Pressable>
             {filteredPlaces.length === 0 ? (
               <View style={styles.emptyMapOverlay}>

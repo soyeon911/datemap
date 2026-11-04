@@ -1,5 +1,10 @@
 import type { SavedDatePlace } from '@/db/date-cards';
-import { groupPlacesByRegion, parseRegionFromAddress } from '@/utils/place-group';
+import {
+  getNextMapGroupMode,
+  groupPlacesByRegion,
+  mapGroupModeConfig,
+  parseRegionFromAddress,
+} from '@/utils/place-group';
 
 function makePlace(id: string, address: string | null, latitude: number, longitude: number): SavedDatePlace {
   return {
@@ -62,5 +67,29 @@ describe('groupPlacesByRegion', () => {
 
   it('skips places whose address has no region', () => {
     expect(groupPlacesByRegion([makePlace('a', null, 37, 127)], 'city')).toEqual([]);
+  });
+});
+
+describe('getNextMapGroupMode', () => {
+  it('cycles none, city, district, then back to none', () => {
+    expect(getNextMapGroupMode('none')).toBe('city');
+    expect(getNextMapGroupMode('city')).toBe('district');
+    expect(getNextMapGroupMode('district')).toBe('none');
+  });
+});
+
+describe('mapGroupModeConfig', () => {
+  it('zooms out further for wider regions', () => {
+    const { none, city, district } = mapGroupModeConfig;
+
+    expect(city.minRegionDelta).toBeGreaterThan(district.minRegionDelta);
+    expect(district.minRegionDelta).toBeGreaterThan(none.minRegionDelta);
+  });
+
+  it('uses a bigger marker for wider regions', () => {
+    const { none, city, district } = mapGroupModeConfig;
+
+    expect(city.markerSize).toBeGreaterThan(district.markerSize);
+    expect(district.markerSize).toBeGreaterThan(none.markerSize);
   });
 });
