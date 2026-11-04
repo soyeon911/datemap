@@ -158,6 +158,8 @@ Vercel 환경 변수:
 - `NAVER_MAP_CLIENT_SECRET`: Naver Cloud Platform Maps Client Secret
 - `NAVER_SEARCH_CLIENT_ID`: 선택 사항, NAVER Developers Local Search Client ID
 - `NAVER_SEARCH_CLIENT_SECRET`: 선택 사항, NAVER Developers Local Search Client Secret
+- `SUPABASE_URL`: 필수, 세션 토큰을 검증할 Supabase 프로젝트 URL
+- `SUPABASE_ANON_KEY`: 필수, 같은 프로젝트의 anon key
 
 앱 환경 변수:
 
@@ -165,10 +167,11 @@ Vercel 환경 변수:
 
 동작 방식:
 
-1. `NAVER_SEARCH_CLIENT_ID/SECRET`이 있으면 Local Search로 장소 후보를 찾는다.
-2. 후보의 주소를 Naver Cloud Maps Geocoding으로 변환해 위도/경도를 얻는다.
-3. Local Search 키가 없으면 Naver Cloud Maps Geocoding만으로 `query`를 검색한다.
-4. 앱에는 `id`, `name`, `address`, `latitude`, `longitude`, `category`만 반환한다.
+1. `Authorization: Bearer <세션 토큰>`을 Supabase로 검증하고, 실패하면 401을 반환한다. Supabase 환경 변수가 없으면 요청을 차단한다.
+2. `NAVER_SEARCH_CLIENT_ID/SECRET`이 있으면 Local Search로 장소 후보를 찾는다.
+3. 후보의 주소를 Naver Cloud Maps Geocoding으로 변환해 위도/경도를 얻는다.
+4. Local Search 키가 없으면 Naver Cloud Maps Geocoding만으로 `query`를 검색한다.
+5. 앱에는 `id`, `name`, `address`, `latitude`, `longitude`, `category`만 반환한다.
 
 프록시 응답 형식:
 
@@ -186,6 +189,8 @@ Vercel 환경 변수:
   ]
 }
 ```
+
+오류 응답은 `{ "error": "코드" }` 형식이며, 상세 내용은 서버 로그에만 남긴다.
 
 저장해야 하는 검색 결과:
 
