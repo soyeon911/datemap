@@ -1,3 +1,5 @@
+import { supabase } from '@/lib/supabase';
+
 export type NaverPlaceSearchResult = {
   id: string;
   name: string;
@@ -40,10 +42,19 @@ export async function searchNaverPlaces(query: string): Promise<NaverPlaceSearch
     throw new Error('PLACE_SEARCH_PROXY_REQUIRED');
   }
 
+  const { data } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token;
+
+  if (!accessToken) {
+    throw new Error('PLACE_SEARCH_SESSION_REQUIRED');
+  }
+
   const url = new URL(placeSearchEndpoint);
   url.searchParams.set('query', trimmedQuery);
 
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
 
   if (!response.ok) {
     throw new Error(`PLACE_SEARCH_FAILED_${response.status}`);
