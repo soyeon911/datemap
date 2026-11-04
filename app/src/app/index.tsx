@@ -52,7 +52,8 @@ import { useAuth } from '@/lib/auth-context';
 import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
-import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
+import { getOrderedPhotoUris, getPhotoExtension, stepPhotoIndex } from '@/utils/photo';
+import { canEditPlace } from '@/utils/place-permission';
 
 type SelectedCoord = {
   latitude: number;
@@ -852,7 +853,7 @@ export default function HomeScreen() {
                 <Pressable style={styles.detailActionButton} onPress={() => setSelectedSavedPlace(null)}>
                   <Text style={styles.detailActionText}>닫기</Text>
                 </Pressable>
-                {selectedSavedPlace.ownerUserId === null || selectedSavedPlace.ownerUserId === session?.user.id ? (
+                {canEditPlace(selectedSavedPlace, session?.user.id) ? (
                   <>
                     <Pressable
                       style={styles.detailActionButton}
@@ -888,9 +889,7 @@ export default function HomeScreen() {
                         accessibilityLabel="이전 사진"
                         style={[styles.photoNavButton, styles.photoNavButtonLeft]}
                         onPress={() =>
-                          setDetailPhotoIndex(
-                            (currentIndex) => (currentIndex - 1 + detailPhotoUris.length) % detailPhotoUris.length
-                          )
+                          setDetailPhotoIndex((currentIndex) => stepPhotoIndex(currentIndex, -1, detailPhotoUris.length))
                         }>
                         <Text style={styles.photoNavButtonText}>‹</Text>
                       </Pressable>
@@ -898,7 +897,7 @@ export default function HomeScreen() {
                         accessibilityLabel="다음 사진"
                         style={[styles.photoNavButton, styles.photoNavButtonRight]}
                         onPress={() =>
-                          setDetailPhotoIndex((currentIndex) => (currentIndex + 1) % detailPhotoUris.length)
+                          setDetailPhotoIndex((currentIndex) => stepPhotoIndex(currentIndex, 1, detailPhotoUris.length))
                         }>
                         <Text style={styles.photoNavButtonText}>›</Text>
                       </Pressable>
