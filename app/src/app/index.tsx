@@ -52,7 +52,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
-import { getLast30DaysRange, getMonthRange, getWeekRange } from '@/utils/date';
+import { getMonthRange, getWeekRange } from '@/utils/date';
 import { filterPresetLabels, type FilterPreset } from '@/utils/date-filter';
 import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
 import { groupPlacesByRegion, type PlaceGroup } from '@/utils/place-group';
@@ -546,14 +546,7 @@ export default function HomeScreen() {
       return;
     }
 
-    if (preset === 'this_month') {
-      const range = getMonthRange(today);
-      setFilterStartDate(range.start);
-      setFilterEndDate(range.end);
-      return;
-    }
-
-    const range = getLast30DaysRange(today);
+    const range = getMonthRange(today);
     setFilterStartDate(range.start);
     setFilterEndDate(range.end);
   }

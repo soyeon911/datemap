@@ -28,16 +28,6 @@ export function getMonthRange(dateString: string) {
   };
 }
 
-export function getLast30DaysRange(endDateString: string) {
-  const startDate = new Date(`${endDateString}T00:00:00`);
-  startDate.setDate(startDate.getDate() - 29);
-
-  return {
-    start: toDateString(startDate),
-    end: endDateString,
-  };
-}
-
 // Uses the device's local calendar date. toISOString() would convert to UTC first,
 // which turns local midnight in UTC+9 into the previous day.
 export function toDateString(date: Date) {
