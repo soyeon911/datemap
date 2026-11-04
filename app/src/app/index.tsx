@@ -46,20 +46,12 @@ import {
   updateDatePlace,
   type SavedDatePlace,
 } from '@/db/date-cards';
+import { useDateFilter } from '@/hooks/use-date-filter';
 import { useSavedPlaces } from '@/hooks/use-saved-places';
 import { useAuth } from '@/lib/auth-context';
 import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
-import { getWeekRange } from '@/utils/date';
-import {
-  filterPlacesByDate,
-  getFilterLabel,
-  getNextRangeSelection,
-  getPresetRange,
-  type CalendarTarget,
-  type FilterPreset,
-} from '@/utils/date-filter';
 import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
 import { groupPlacesByRegion, type PlaceGroup } from '@/utils/place-group';
 
@@ -80,6 +72,19 @@ export default function HomeScreen() {
   const { couple, createInvite, joinWithCode, leaveCouple } = useCouple();
   const { savedPlaces, datePlaceCount, databaseState, isRefreshing, refreshDatePlaces, handlePullToRefresh } =
     useSavedPlaces();
+  const {
+    filteredPlaces,
+    activeDates,
+    filterStartDate,
+    filterEndDate,
+    filterLabel,
+    activeFilterDate,
+    isFilterDropdownVisible,
+    toggleFilterDropdown,
+    selectFilterDate,
+    selectWeekFilter,
+    applyFilterPreset,
+  } = useDateFilter(savedPlaces);
   const [selectedCoord, setSelectedCoord] = useState<SelectedCoord | null>(null);
   const [date, setDate] = useState(today);
   const [placeName, setPlaceName] = useState('');
@@ -94,11 +99,6 @@ export default function HomeScreen() {
   const [oneLineDiary, setOneLineDiary] = useState('');
   const [hashtagText, setHashtagText] = useState('');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
-  const [calendarTarget, setCalendarTarget] = useState<CalendarTarget>('start');
-  const [filterPreset, setFilterPreset] = useState<FilterPreset>('all');
-  const [isFilterDropdownVisible, setIsFilterDropdownVisible] = useState(false);
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
   const [mapGroupMode, setMapGroupMode] = useState<MapGroupMode>('none');
   const [selectedGroup, setSelectedGroup] = useState<PlaceGroup | null>(null);
@@ -123,11 +123,6 @@ export default function HomeScreen() {
         .map((tag) => tag.trim().replace(/^#/, ''))
         .filter(Boolean),
     [hashtagText]
-  );
-
-  const filteredPlaces = useMemo(
-    () => filterPlacesByDate(savedPlaces, filterStartDate, filterEndDate),
-    [filterEndDate, filterStartDate, savedPlaces]
   );
 
   const placeGroups = useMemo(
@@ -167,12 +162,6 @@ export default function HomeScreen() {
 
     return boundaries;
   }, [mapGroupMode, placeGroups]);
-
-  const activeDates = useMemo(() => Array.from(new Set(savedPlaces.map((place) => place.date))), [savedPlaces]);
-  const filterLabel = useMemo(
-    () => getFilterLabel(filterStartDate, filterEndDate, filterPreset),
-    [filterEndDate, filterPreset, filterStartDate]
-  );
 
   const detailPhotoUris = useMemo(
     () => (selectedSavedPlace ? getOrderedPhotoUris(selectedSavedPlace) : []),
@@ -408,31 +397,6 @@ export default function HomeScreen() {
     ]);
   }
 
-  function selectFilterDate(nextDate: string) {
-    const selection = getNextRangeSelection(filterStartDate, filterEndDate, nextDate);
-    setFilterPreset('all');
-    setFilterStartDate(selection.start);
-    setFilterEndDate(selection.end);
-    setCalendarTarget(selection.target);
-  }
-
-  const activeFilterDate = calendarTarget === 'start' ? filterStartDate || today : filterEndDate || today;
-
-  function applyFilterPreset(preset: FilterPreset) {
-    const range = getPresetRange(preset, today);
-    setFilterPreset(preset);
-    setIsFilterDropdownVisible(false);
-    setFilterStartDate(range.start);
-    setFilterEndDate(range.end);
-  }
-
-  function selectWeekFilter(nextDate: string) {
-    const range = getWeekRange(nextDate);
-    setFilterPreset('all');
-    setFilterStartDate(range.start);
-    setFilterEndDate(range.end);
-  }
-
   function openPlaceDetail(place: SavedDatePlace) {
     setDetailPhotoIndex(0);
     setSelectedSavedPlace(place);
@@ -570,7 +534,7 @@ export default function HomeScreen() {
           <PeriodPanel
             filterLabel={filterLabel}
             isDropdownVisible={isFilterDropdownVisible}
-            onToggleDropdown={() => setIsFilterDropdownVisible((isVisible) => !isVisible)}
+            onToggleDropdown={toggleFilterDropdown}
             onOpenCalendar={() => setIsDatePickerVisible(true)}
             onSelectPreset={applyFilterPreset}
           />
