@@ -24,7 +24,8 @@ import { FullScreenPhotoModal } from '@/components/home/full-screen-photo-modal'
 import { modalStyles } from '@/components/home/modal-styles';
 import { PlaceGroupModal } from '@/components/home/place-group-modal';
 import { PeriodPanel } from '@/components/home/period-panel';
-import { SavedPlaceCard, savedPlaceStyles } from '@/components/home/saved-place-card';
+import { PlaceDetailModal } from '@/components/home/place-detail-modal';
+import { SavedPlaceCard } from '@/components/home/saved-place-card';
 import {
   Section,
   TextBadge,
@@ -52,8 +53,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
-import { getOrderedPhotoUris, getPhotoExtension, stepPhotoIndex } from '@/utils/photo';
-import { canEditPlace } from '@/utils/place-permission';
+import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
 
 type SelectedCoord = {
   latitude: number;
@@ -113,7 +113,6 @@ export default function HomeScreen() {
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [selectedSavedPlace, setSelectedSavedPlace] = useState<SavedDatePlace | null>(null);
   const [editingDatePlace, setEditingDatePlace] = useState<SavedDatePlace | null>(null);
-  const [detailPhotoIndex, setDetailPhotoIndex] = useState(0);
   const [fullScreenPhotoUri, setFullScreenPhotoUri] = useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isSettingsVisible, setIsSettingsVisible] = useState(false);
@@ -130,11 +129,6 @@ export default function HomeScreen() {
         .map((tag) => tag.trim().replace(/^#/, ''))
         .filter(Boolean),
     [hashtagText]
-  );
-
-  const detailPhotoUris = useMemo(
-    () => (selectedSavedPlace ? getOrderedPhotoUris(selectedSavedPlace) : []),
-    [selectedSavedPlace]
   );
 
   useEffect(() => {
@@ -367,7 +361,6 @@ export default function HomeScreen() {
   }
 
   function openPlaceDetail(place: SavedDatePlace) {
-    setDetailPhotoIndex(0);
     setSelectedSavedPlace(place);
   }
 
@@ -841,106 +834,14 @@ export default function HomeScreen() {
         </SafeAreaView>
       </Modal>
 
-      <Modal
-        animationType="fade"
-        transparent
-        visible={selectedSavedPlace !== null}
-        onRequestClose={() => setSelectedSavedPlace(null)}>
-        <Pressable style={styles.detailOverlay} onPress={() => setSelectedSavedPlace(null)}>
-          {selectedSavedPlace ? (
-            <Pressable style={styles.detailSheet} onPress={(event) => event.stopPropagation()}>
-              <View style={styles.detailActionBar}>
-                <Pressable style={styles.detailActionButton} onPress={() => setSelectedSavedPlace(null)}>
-                  <Text style={styles.detailActionText}>닫기</Text>
-                </Pressable>
-                {canEditPlace(selectedSavedPlace, session?.user.id) ? (
-                  <>
-                    <Pressable
-                      style={styles.detailActionButton}
-                      onPress={() => openEditPlaceModal(selectedSavedPlace)}>
-                      <Text style={styles.detailActionText}>수정</Text>
-                    </Pressable>
-                    <Pressable style={styles.detailDeleteButton} onPress={() => confirmDeletePlace(selectedSavedPlace)}>
-                      <Text style={styles.detailDeleteText}>삭제</Text>
-                    </Pressable>
-                  </>
-                ) : (
-                  <Text style={styles.detailActionText}>상대방이 남긴 기록이에요</Text>
-                )}
-              </View>
-
-              {detailPhotoUris.length > 0 ? (
-                <View style={styles.detailImageFrame}>
-                  <Pressable
-                    style={styles.detailImageButton}
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      setFullScreenPhotoUri(detailPhotoUris[detailPhotoIndex]);
-                    }}>
-                    <Image
-                      source={{ uri: detailPhotoUris[detailPhotoIndex] }}
-                      style={styles.detailImage}
-                      resizeMode="contain"
-                    />
-                  </Pressable>
-                  {detailPhotoUris.length > 1 ? (
-                    <>
-                      <Pressable
-                        accessibilityLabel="이전 사진"
-                        style={[styles.photoNavButton, styles.photoNavButtonLeft]}
-                        onPress={() =>
-                          setDetailPhotoIndex((currentIndex) => stepPhotoIndex(currentIndex, -1, detailPhotoUris.length))
-                        }>
-                        <Text style={styles.photoNavButtonText}>‹</Text>
-                      </Pressable>
-                      <Pressable
-                        accessibilityLabel="다음 사진"
-                        style={[styles.photoNavButton, styles.photoNavButtonRight]}
-                        onPress={() =>
-                          setDetailPhotoIndex((currentIndex) => stepPhotoIndex(currentIndex, 1, detailPhotoUris.length))
-                        }>
-                        <Text style={styles.photoNavButtonText}>›</Text>
-                      </Pressable>
-                      <View style={styles.photoPager}>
-                        {detailPhotoUris.map((uri, index) => (
-                          <Pressable
-                            key={`${uri}_${index}`}
-                            accessibilityLabel={`${index + 1}번째 사진 보기`}
-                            style={[styles.photoPagerDot, index === detailPhotoIndex && styles.photoPagerDotActive]}
-                            onPress={() => setDetailPhotoIndex(index)}
-                          />
-                        ))}
-                      </View>
-                    </>
-                  ) : null}
-                </View>
-              ) : (
-                <View style={styles.detailImagePlaceholder}>
-                  <Text style={savedPlaceStyles.savedCardImagePlaceholderText}>대표 사진 없음</Text>
-                </View>
-              )}
-
-              <View style={styles.detailContent}>
-                <Text style={styles.detailTitle}>{selectedSavedPlace.placeName}</Text>
-                <Text style={styles.detailDate}>{selectedSavedPlace.date}</Text>
-                <Text style={savedPlaceStyles.savedCardMeta}>사진 {selectedSavedPlace.photoCount}장 저장됨</Text>
-                {selectedSavedPlace.oneLineDiary ? (
-                  <Text style={styles.detailDiary}>{selectedSavedPlace.oneLineDiary}</Text>
-                ) : null}
-                {selectedSavedPlace.hashtags.length > 0 ? (
-                  <View style={savedPlaceStyles.savedHashtagRow}>
-                    {selectedSavedPlace.hashtags.map((tag) => (
-                      <View key={tag} style={savedPlaceStyles.savedHashtagChip}>
-                        <Text style={savedPlaceStyles.savedHashtagText}>#{tag}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-              </View>
-            </Pressable>
-          ) : null}
-        </Pressable>
-      </Modal>
+      <PlaceDetailModal
+        place={selectedSavedPlace}
+        currentUserId={session?.user.id}
+        onClose={() => setSelectedSavedPlace(null)}
+        onEdit={openEditPlaceModal}
+        onDelete={confirmDeletePlace}
+        onOpenPhoto={setFullScreenPhotoUri}
+      />
 
       <FullScreenPhotoModal uri={fullScreenPhotoUri} onClose={() => setFullScreenPhotoUri(null)} />
 
@@ -1480,129 +1381,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#A86873',
     paddingVertical: 15,
-  },
-  detailOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(33,29,26,0.35)',
-  },
-  detailSheet: {
-    maxHeight: '82%',
-    overflow: 'hidden',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    backgroundColor: '#F8EFEC',
-  },
-  detailActionBar: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    zIndex: 5,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  detailActionButton: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-  },
-  detailActionText: {
-    color: '#3E3833',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  detailDeleteButton: {
-    borderRadius: 999,
-    backgroundColor: '#ECDADD',
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-  },
-  detailDeleteText: {
-    color: '#9D4F5B',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  detailImageFrame: {
-    position: 'relative',
-    height: 260,
-    backgroundColor: '#E5D4CF',
-  },
-  detailImageButton: {
-    width: '100%',
-    height: '100%',
-  },
-  detailImage: {
-    width: '100%',
-    height: '100%',
-  },
-  photoNavButton: {
-    position: 'absolute',
-    top: '44%',
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.88)',
-  },
-  photoNavButtonLeft: {
-    left: 12,
-  },
-  photoNavButtonRight: {
-    right: 12,
-  },
-  photoNavButtonText: {
-    color: '#342725',
-    fontSize: 28,
-    fontWeight: '800',
-    lineHeight: 30,
-  },
-  photoPager: {
-    position: 'absolute',
-    right: 14,
-    bottom: 12,
-    flexDirection: 'row',
-    gap: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(33,29,26,0.28)',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  photoPagerDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.55)',
-  },
-  photoPagerDotActive: {
-    width: 16,
-    backgroundColor: '#F8EFEC',
-  },
-  detailImagePlaceholder: {
-    height: 220,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#E5D4CF',
-  },
-  detailContent: {
-    padding: 18,
-    gap: 10,
-  },
-  detailTitle: {
-    color: '#342725',
-    fontSize: 24,
-    fontWeight: '900',
-  },
-  detailDate: {
-    color: '#7C7065',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  detailDiary: {
-    color: '#3E3833',
-    fontSize: 16,
-    lineHeight: 23,
   },
   quickRangeRow: {
   flexDirection: 'row',
