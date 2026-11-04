@@ -23,6 +23,7 @@ import { CalendarPicker } from '@/components/home/calendar-picker';
 import { FullScreenPhotoModal } from '@/components/home/full-screen-photo-modal';
 import { modalStyles } from '@/components/home/modal-styles';
 import { PlaceGroupModal } from '@/components/home/place-group-modal';
+import { PeriodPanel } from '@/components/home/period-panel';
 import { SavedPlaceCard, savedPlaceStyles } from '@/components/home/saved-place-card';
 import {
   Section,
@@ -52,6 +53,7 @@ import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
 import { getLast30DaysRange, getMonthRange, getWeekRange } from '@/utils/date';
+import { filterPresetLabels, type FilterPreset } from '@/utils/date-filter';
 import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
 import { groupPlacesByRegion, type PlaceGroup } from '@/utils/place-group';
 
@@ -65,17 +67,9 @@ type SelectedPhoto = {
 };
 type CalendarTarget = 'start' | 'end';
 type DatePickerMode = 'range' | 'week';
-type FilterPreset = 'all' | 'this_week' | 'this_month' | 'last_30_days';
 type MapGroupMode = 'none' | 'city' | 'district';
 
 const dateMapLogo = require('@/assets/images/splash-icon.png');
-const filterPresetLabels: Record<FilterPreset, string> = {
-  all: '전체 기간',
-  this_week: '이번 주',
-  this_month: '이번 달',
-  last_30_days: '최근 30일',
-};
-
 export default function HomeScreen() {
   const db = useSQLiteContext();
   const { session, signOut } = useAuth();
@@ -705,38 +699,13 @@ export default function HomeScreen() {
             ) : null}
           </View>
 
-          <View style={styles.periodPanel}>
-            <Pressable
-              style={styles.filterDropdownButton}
-              onPress={() => setIsFilterDropdownVisible((isVisible) => !isVisible)}>
-              <View>
-                <Text style={styles.filterDropdownLabel}>날짜 필터</Text>
-                <Text style={styles.filterDropdownValue}>{filterLabel}</Text>
-              </View>
-              <Text style={styles.dropdownChevron}>⌄</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="날짜 필터 열기"
-              style={styles.calendarIconButton}
-              onPress={() => setIsDatePickerVisible(true)}>
-              <SymbolView
-                name="calendar"
-                size={23}
-                tintColor="#F8EFEC"
-                weight="semibold"
-                fallback={<Text style={styles.calendarIconText}>□</Text>}
-              />
-            </Pressable>
-            {isFilterDropdownVisible ? (
-              <View style={styles.filterDropdownMenu}>
-                {(Object.keys(filterPresetLabels) as FilterPreset[]).map((preset) => (
-                  <Pressable key={preset} style={styles.filterDropdownItem} onPress={() => applyFilterPreset(preset)}>
-                    <Text style={styles.filterDropdownItemText}>{filterPresetLabels[preset]}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-          </View>
+          <PeriodPanel
+            filterLabel={filterLabel}
+            isDropdownVisible={isFilterDropdownVisible}
+            onToggleDropdown={() => setIsFilterDropdownVisible((isVisible) => !isVisible)}
+            onOpenCalendar={() => setIsDatePickerVisible(true)}
+            onSelectPreset={applyFilterPreset}
+          />
         </View>
 
         <View style={styles.bottomDock}>
@@ -1413,77 +1382,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     textAlign: 'center',
-  },
-  periodPanel: {
-    position: 'relative',
-    flexDirection: 'row',
-    gap: 8,
-    zIndex: 10,
-  },
-  filterDropdownButton: {
-    flex: 1,
-    minHeight: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#D2BEB8',
-    backgroundColor: '#F1E5E1',
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-  },
-  filterDropdownLabel: {
-    color: '#8B8076',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  filterDropdownValue: {
-    color: '#342725',
-    fontSize: 14,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  dropdownChevron: {
-    color: '#625850',
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  calendarIconButton: {
-    width: 54,
-    minHeight: 54,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-    backgroundColor: '#A86873',
-  },
-  calendarIconText: {
-    color: '#F8EFEC',
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  filterDropdownMenu: {
-    position: 'absolute',
-    left: 0,
-    right: 62,
-    top: 62,
-    zIndex: 20,
-    overflow: 'hidden',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#D8C4BE',
-    backgroundColor: '#F8EFEC',
-  },
-  filterDropdownItem: {
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E7D2CD',
-  },
-  filterDropdownItemText: {
-    color: '#3E3833',
-    fontSize: 14,
-    fontWeight: '800',
   },
   bottomDock: {
     gap: 12,
