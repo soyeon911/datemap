@@ -39,7 +39,6 @@ import {
 import { DateMapView } from '@/components/map/date-map-view';
 import { SavedPlacesMap } from '@/components/map/saved-places-map';
 import { today } from '@/constants/today';
-import { findDistrictBoundary, findProvinceBoundary, type Coord } from '@/data/korea-boundaries';
 import {
   createDateCard,
   deleteDatePlace,
@@ -47,19 +46,13 @@ import {
   type SavedDatePlace,
 } from '@/db/date-cards';
 import { useDateFilter } from '@/hooks/use-date-filter';
+import { useMapGrouping } from '@/hooks/use-map-grouping';
 import { useSavedPlaces } from '@/hooks/use-saved-places';
 import { useAuth } from '@/lib/auth-context';
 import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
 import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
-import {
-  getNextMapGroupMode,
-  groupPlacesByRegion,
-  mapGroupModeConfig,
-  type MapGroupMode,
-  type PlaceGroup,
-} from '@/utils/place-group';
 
 type SelectedCoord = {
   latitude: number;
@@ -90,6 +83,16 @@ export default function HomeScreen() {
     selectWeekFilter,
     applyFilterPreset,
   } = useDateFilter(savedPlaces);
+  const {
+    mapGroupMode,
+    mapModeConfig,
+    placeGroups,
+    mapMarkers,
+    regionBoundaries,
+    selectedGroup,
+    setSelectedGroup,
+    cycleMapGroupMode,
+  } = useMapGrouping(filteredPlaces);
   const [selectedCoord, setSelectedCoord] = useState<SelectedCoord | null>(null);
   const [date, setDate] = useState(today);
   const [placeName, setPlaceName] = useState('');
@@ -105,8 +108,6 @@ export default function HomeScreen() {
   const [hashtagText, setHashtagText] = useState('');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
-  const [mapGroupMode, setMapGroupMode] = useState<MapGroupMode>('none');
-  const [selectedGroup, setSelectedGroup] = useState<PlaceGroup | null>(null);
   const [datePickerMode, setDatePickerMode] = useState<DatePickerMode>('range');
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [selectedSavedPlace, setSelectedSavedPlace] = useState<SavedDatePlace | null>(null);
@@ -129,46 +130,6 @@ export default function HomeScreen() {
         .filter(Boolean),
     [hashtagText]
   );
-
-  const mapModeConfig = mapGroupModeConfig[mapGroupMode];
-
-  const placeGroups = useMemo(
-    () => (mapGroupMode === 'none' ? [] : groupPlacesByRegion(filteredPlaces, mapGroupMode)),
-    [filteredPlaces, mapGroupMode]
-  );
-
-  const mapMarkers = useMemo(() => {
-    if (mapGroupMode === 'none') {
-      return filteredPlaces;
-    }
-
-    return placeGroups.map((group) => ({
-      id: group.key,
-      placeName: group.label,
-      latitude: group.latitude,
-      longitude: group.longitude,
-    }));
-  }, [mapGroupMode, filteredPlaces, placeGroups]);
-
-  const regionBoundaries = useMemo(() => {
-    const boundaries: { key: string; rings: Coord[][] }[] = [];
-
-    if (mapGroupMode === 'none') {
-      return boundaries;
-    }
-
-    const findBoundary = mapGroupMode === 'city' ? findProvinceBoundary : findDistrictBoundary;
-
-    for (const group of placeGroups) {
-      const rings = findBoundary(group.regionName);
-
-      if (rings) {
-        boundaries.push({ key: group.key, rings });
-      }
-    }
-
-    return boundaries;
-  }, [mapGroupMode, placeGroups]);
 
   const detailPhotoUris = useMemo(
     () => (selectedSavedPlace ? getOrderedPhotoUris(selectedSavedPlace) : []),
@@ -524,7 +485,7 @@ export default function HomeScreen() {
             />
             <Pressable
               style={styles.mapGroupToggleButton}
-              onPress={() => setMapGroupMode(getNextMapGroupMode)}>
+              onPress={cycleMapGroupMode}>
               <Text style={styles.mapGroupToggleButtonText}>{mapModeConfig.toggleLabel}</Text>
             </Pressable>
             {filteredPlaces.length === 0 ? (
