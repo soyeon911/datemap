@@ -51,8 +51,15 @@ import { useAuth } from '@/lib/auth-context';
 import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
-import { getMonthRange, getWeekRange } from '@/utils/date';
-import { filterPresetLabels, type FilterPreset } from '@/utils/date-filter';
+import { getWeekRange } from '@/utils/date';
+import {
+  filterPlacesByDate,
+  getFilterLabel,
+  getNextRangeSelection,
+  getPresetRange,
+  type CalendarTarget,
+  type FilterPreset,
+} from '@/utils/date-filter';
 import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
 import { groupPlacesByRegion, type PlaceGroup } from '@/utils/place-group';
 
@@ -63,7 +70,6 @@ type SelectedCoord = {
 type SelectedPhoto = {
   uri: string;
 };
-type CalendarTarget = 'start' | 'end';
 type DatePickerMode = 'range' | 'week';
 type MapGroupMode = 'none' | 'city' | 'district';
 
@@ -119,19 +125,10 @@ export default function HomeScreen() {
     [hashtagText]
   );
 
-  const filteredPlaces = useMemo(() => {
-    return savedPlaces.filter((place) => {
-      if (filterStartDate && place.date < filterStartDate) {
-        return false;
-      }
-
-      if (filterEndDate && place.date > filterEndDate) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [filterEndDate, filterStartDate, savedPlaces]);
+  const filteredPlaces = useMemo(
+    () => filterPlacesByDate(savedPlaces, filterStartDate, filterEndDate),
+    [filterEndDate, filterStartDate, savedPlaces]
+  );
 
   const placeGroups = useMemo(
     () => (mapGroupMode === 'none' ? [] : groupPlacesByRegion(filteredPlaces, mapGroupMode)),
@@ -172,21 +169,10 @@ export default function HomeScreen() {
   }, [mapGroupMode, placeGroups]);
 
   const activeDates = useMemo(() => Array.from(new Set(savedPlaces.map((place) => place.date))), [savedPlaces]);
-  const filterLabel = useMemo(() => {
-    if (filterStartDate && filterEndDate) {
-      return `${filterStartDate} ~ ${filterEndDate}`;
-    }
-
-    if (filterStartDate) {
-      return `${filterStartDate}부터`;
-    }
-
-    if (filterEndDate) {
-      return `${filterEndDate}까지`;
-    }
-
-    return filterPresetLabels[filterPreset];
-  }, [filterEndDate, filterPreset, filterStartDate]);
+  const filterLabel = useMemo(
+    () => getFilterLabel(filterStartDate, filterEndDate, filterPreset),
+    [filterEndDate, filterPreset, filterStartDate]
+  );
 
   const detailPhotoUris = useMemo(
     () => (selectedSavedPlace ? getOrderedPhotoUris(selectedSavedPlace) : []),
@@ -423,52 +409,19 @@ export default function HomeScreen() {
   }
 
   function selectFilterDate(nextDate: string) {
+    const selection = getNextRangeSelection(filterStartDate, filterEndDate, nextDate);
     setFilterPreset('all');
-
-    const hasStartDate = Boolean(filterStartDate);
-    const hasEndDate = Boolean(filterEndDate);
-
-    // 1. 아무것도 선택 안 했거나, 이미 시작/종료가 모두 선택된 상태면 새로 시작
-    if (!hasStartDate || (hasStartDate && hasEndDate)) {
-      setFilterStartDate(nextDate);
-      setFilterEndDate('');
-      setCalendarTarget('end');
-      return;
-    }
-
-    // 2. 시작일만 있는 상태에서 시작일보다 이전 날짜를 누르면 새로 시작
-    if (nextDate < filterStartDate) {
-      setFilterStartDate(nextDate);
-      setFilterEndDate('');
-      setCalendarTarget('end');
-      return;
-    }
-
-    // 3. 시작일 이후 날짜면 종료일로 설정
-    setFilterEndDate(nextDate);
-    setCalendarTarget('start');
+    setFilterStartDate(selection.start);
+    setFilterEndDate(selection.end);
+    setCalendarTarget(selection.target);
   }
 
   const activeFilterDate = calendarTarget === 'start' ? filterStartDate || today : filterEndDate || today;
 
   function applyFilterPreset(preset: FilterPreset) {
+    const range = getPresetRange(preset, today);
     setFilterPreset(preset);
     setIsFilterDropdownVisible(false);
-
-    if (preset === 'all') {
-      setFilterStartDate('');
-      setFilterEndDate('');
-      return;
-    }
-
-    if (preset === 'this_week') {
-      const range = getWeekRange(today);
-      setFilterStartDate(range.start);
-      setFilterEndDate(range.end);
-      return;
-    }
-
-    const range = getMonthRange(today);
     setFilterStartDate(range.start);
     setFilterEndDate(range.end);
   }
