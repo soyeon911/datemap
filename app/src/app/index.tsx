@@ -41,13 +41,12 @@ import { SavedPlacesMap } from '@/components/map/saved-places-map';
 import { today } from '@/constants/today';
 import { findDistrictBoundary, findProvinceBoundary, type Coord } from '@/data/korea-boundaries';
 import {
-  countDateCards,
   createDateCard,
   deleteDatePlace,
-  getSavedDatePlaces,
   updateDatePlace,
   type SavedDatePlace,
 } from '@/db/date-cards';
+import { useSavedPlaces } from '@/hooks/use-saved-places';
 import { useAuth } from '@/lib/auth-context';
 import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
@@ -57,7 +56,6 @@ import { filterPresetLabels, type FilterPreset } from '@/utils/date-filter';
 import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
 import { groupPlacesByRegion, type PlaceGroup } from '@/utils/place-group';
 
-type DatabaseState = 'checking' | 'ready' | 'failed';
 type SelectedCoord = {
   latitude: number;
   longitude: number;
@@ -74,11 +72,8 @@ export default function HomeScreen() {
   const db = useSQLiteContext();
   const { session, signOut } = useAuth();
   const { couple, createInvite, joinWithCode, leaveCouple } = useCouple();
-  const pulledUserIdRef = useRef<string | null>(null);
-  const pulledCoupleIdRef = useRef<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [databaseState, setDatabaseState] = useState<DatabaseState>('checking');
-  const [datePlaceCount, setDatePlaceCount] = useState(0);
+  const { savedPlaces, datePlaceCount, databaseState, isRefreshing, refreshDatePlaces, handlePullToRefresh } =
+    useSavedPlaces();
   const [selectedCoord, setSelectedCoord] = useState<SelectedCoord | null>(null);
   const [date, setDate] = useState(today);
   const [placeName, setPlaceName] = useState('');
@@ -93,7 +88,6 @@ export default function HomeScreen() {
   const [oneLineDiary, setOneLineDiary] = useState('');
   const [hashtagText, setHashtagText] = useState('');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [savedPlaces, setSavedPlaces] = useState<SavedDatePlace[]>([]);
   const [filterStartDate, setFilterStartDate] = useState('');
   const [filterEndDate, setFilterEndDate] = useState('');
   const [calendarTarget, setCalendarTarget] = useState<CalendarTarget>('start');
@@ -200,60 +194,6 @@ export default function HomeScreen() {
   );
 
   useEffect(() => {
-    let isMounted = true;
-
-    async function loadDatabaseStatus() {
-      try {
-        const [count, places] = await Promise.all([countDateCards(db), getSavedDatePlaces(db)]);
-
-        if (isMounted) {
-          setDatePlaceCount(count);
-          setSavedPlaces(places);
-          setDatabaseState('ready');
-        }
-      } catch {
-        if (isMounted) {
-          setDatabaseState('failed');
-        }
-      }
-    }
-
-    loadDatabaseStatus();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [db]);
-
-  useEffect(() => {
-    const userId = session?.user.id ?? null;
-
-    if (!userId || pulledUserIdRef.current === userId) {
-      return;
-    }
-
-    pulledUserIdRef.current = userId;
-
-    pullRemoteChanges(db).then(() => refreshDatePlaces());
-    // refreshDatePlaces intentionally omitted: it's redefined every render, and the
-    // pulledUserIdRef guard above already ensures this only runs once per login.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, session]);
-
-  useEffect(() => {
-    const coupleId = couple?.id ?? null;
-
-    if (!coupleId || pulledCoupleIdRef.current === coupleId) {
-      return;
-    }
-
-    pulledCoupleIdRef.current = coupleId;
-
-    pullRemoteChanges(db).then(() => refreshDatePlaces());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, couple]);
-
-  useEffect(() => {
     if (filteredPlaces.length < 2) {
       return;
     }
@@ -268,24 +208,6 @@ export default function HomeScreen() {
 
     return () => clearInterval(timer);
   }, [filteredPlaces.length]);
-
-  async function refreshDatePlaces() {
-    const [count, places] = await Promise.all([countDateCards(db), getSavedDatePlaces(db)]);
-    setDatePlaceCount(count);
-    setSavedPlaces(places);
-    setDatabaseState('ready');
-  }
-
-  async function handlePullToRefresh() {
-    setIsRefreshing(true);
-
-    try {
-      await pullRemoteChanges(db);
-      await refreshDatePlaces();
-    } finally {
-      setIsRefreshing(false);
-    }
-  }
 
   function openAddPlaceModal() {
     setDate(today);
