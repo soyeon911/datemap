@@ -796,24 +796,11 @@ export default function HomeScreen() {
               </Pressable>
             </View>
 
-            {datePickerMode === 'range' ? (
-              <View style={styles.periodButtonRow}>
-                <View style={[styles.periodButton, calendarTarget === 'start' && styles.periodButtonActive]}>
-                  <Text style={[styles.periodButtonText, calendarTarget === 'start' && styles.periodButtonTextActive]}>
-                    
-                  </Text>
-                </View>
-                <View style={[styles.periodButton, calendarTarget === 'end' && styles.periodButtonActive]}>
-                  <Text style={[styles.periodButtonText, calendarTarget === 'end' && styles.periodButtonTextActive]}>
-                    
-                  </Text>
-                </View>
-              </View>
-            ) : (
+            {datePickerMode === 'week' ? (
               <View style={styles.weekHintBox}>
                 <Text style={styles.weekHintText}>날짜를 선택하면 해당 주의 월요일부터 일요일까지 필터링합니다.</Text>
               </View>
-            )}
+            ) : null}
 
             <CalendarPicker
               key={`filter_${datePickerMode}_${activeFilterDate}`}
@@ -1497,31 +1484,6 @@ const styles = StyleSheet.create({
     color: '#3E3833',
     fontSize: 14,
     fontWeight: '800',
-  },
-  periodButtonRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  periodButton: {
-    flex: 1,
-    alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D2BEB8',
-    backgroundColor: '#F1E5E1',
-    paddingVertical: 9,
-  },
-  periodButtonActive: {
-    borderColor: '#A86873',
-    backgroundColor: '#EBD8DC',
-  },
-  periodButtonText: {
-    color: '#625850',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  periodButtonTextActive: {
-    color: '#A86873',
   },
   bottomDock: {
     gap: 12,
