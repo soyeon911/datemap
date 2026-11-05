@@ -34,6 +34,9 @@ import { useAuth } from '@/lib/auth-context';
 import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
+import { getLast30DaysRange, getMonthRange, getWeekRange, getYearOptions, toDateString } from '@/utils/date';
+import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
+import { groupPlacesByRegion, type PlaceGroup } from '@/utils/place-group';
 
 type DatabaseState = 'checking' | 'ready' | 'failed';
 type SelectedCoord = {
@@ -47,16 +50,8 @@ type CalendarTarget = 'start' | 'end';
 type DatePickerMode = 'range' | 'week';
 type FilterPreset = 'all' | 'this_week' | 'this_month' | 'last_30_days';
 type MapGroupMode = 'none' | 'city' | 'district';
-type PlaceGroup = {
-  key: string;
-  regionName: string;
-  label: string;
-  latitude: number;
-  longitude: number;
-  places: SavedDatePlace[];
-};
 
-const today = new Date().toISOString().slice(0, 10);
+const today = toDateString(new Date());
 const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
 const monthLabels = Array.from({ length: 12 }, (_, index) => `${index + 1}월`);
 const dateMapLogo = require('@/assets/images/splash-icon.png');
@@ -550,10 +545,9 @@ export default function HomeScreen() {
       return;
     }
 
-    const startDate = new Date(`${today}T00:00:00`);
-    startDate.setDate(startDate.getDate() - 29);
-    setFilterStartDate(toDateString(startDate));
-    setFilterEndDate(today);
+    const range = getLast30DaysRange(today);
+    setFilterStartDate(range.start);
+    setFilterEndDate(range.end);
   }
 
   function selectWeekFilter(nextDate: string) {
@@ -1418,67 +1412,6 @@ function SavedPlaceCard({ place, onPress }: { place: SavedDatePlace; onPress: ()
   );
 }
 
-function getOrderedPhotoUris(place: SavedDatePlace) {
-  const photoUris = place.photoUris.length > 0 ? place.photoUris : place.coverPhotoUri ? [place.coverPhotoUri] : [];
-
-  if (!place.coverPhotoUri) {
-    return photoUris;
-  }
-
-  return [place.coverPhotoUri, ...photoUris.filter((uri) => uri !== place.coverPhotoUri)];
-}
-
-function parseRegionFromAddress(address: string | null): { city: string; district: string } | null {
-  if (!address) {
-    return null;
-  }
-
-  const parts = address.trim().split(/\s+/);
-
-  if (parts.length < 2) {
-    return null;
-  }
-
-  return { city: parts[0], district: parts[1] };
-}
-
-function groupPlacesByRegion(places: SavedDatePlace[], level: 'city' | 'district'): PlaceGroup[] {
-  const groups = new Map<string, { regionName: string; latSum: number; lngSum: number; places: SavedDatePlace[] }>();
-
-  for (const place of places) {
-    const region = parseRegionFromAddress(place.address);
-
-    if (!region) {
-      continue;
-    }
-
-    const regionName = level === 'city' ? region.city : region.district;
-    const key = level === 'city' ? region.city : `${region.city} ${region.district}`;
-    const existing = groups.get(key);
-
-    if (existing) {
-      existing.latSum += place.latitude;
-      existing.lngSum += place.longitude;
-      existing.places.push(place);
-    } else {
-      groups.set(key, { regionName, latSum: place.latitude, lngSum: place.longitude, places: [place] });
-    }
-  }
-
-  return Array.from(groups.entries()).map(([key, value]) => ({
-    key,
-    regionName: value.regionName,
-    label: `${key} (${value.places.length})`,
-    latitude: value.latSum / value.places.length,
-    longitude: value.lngSum / value.places.length,
-    places: value.places,
-  }));
-}
-
-function getYearOptions(centerYear: number) {
-  return Array.from({ length: 11 }, (_, index) => centerYear - 5 + index);
-}
-
 async function copyPhotoToAppStorage(uri: string, index: number) {
   if (!FileSystem.documentDirectory) {
     return uri;
@@ -1500,43 +1433,6 @@ async function copyPhotoToAppStorage(uri: string, index: number) {
   } catch {
     return uri;
   }
-}
-
-function getPhotoExtension(uri: string) {
-  const cleanUri = uri.split('?')[0];
-  const match = cleanUri.match(/\.(jpe?g|png|heic|webp)$/i);
-
-  return match?.[0] ?? '.jpg';
-}
-
-function getWeekRange(dateString: string) {
-  const date = new Date(`${dateString}T00:00:00`);
-  const day = date.getDay();
-  const mondayOffset = day === 0 ? -6 : 1 - day;
-  const start = new Date(date);
-  start.setDate(date.getDate() + mondayOffset);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-
-  return {
-    start: toDateString(start),
-    end: toDateString(end),
-  };
-}
-
-function getMonthRange(dateString: string) {
-  const date = new Date(`${dateString}T00:00:00`);
-  const start = new Date(date.getFullYear(), date.getMonth(), 1);
-  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-
-  return {
-    start: toDateString(start),
-    end: toDateString(end),
-  };
-}
-
-function toDateString(date: Date) {
-  return date.toISOString().slice(0, 10);
 }
 
 function Section({ children }: { children: ReactNode }) {
