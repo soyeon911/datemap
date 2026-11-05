@@ -1,5 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { buildSearchText } from '@/utils/search-text';
+
 export type SyncStatus = 'local_only' | 'pending_upload' | 'synced';
 
 export type DatePlace = {
@@ -72,16 +74,7 @@ export async function createDateCard(db: SQLiteDatabase, input: CreateDateCardIn
   const dateEntryId = `entry_${input.date}`;
   const datePlaceId = `place_${Date.now()}`;
   const hashtags = input.hashtags ?? [];
-  const normalizedSearchText = [
-    input.placeName,
-    input.address,
-    input.oneLineDiary,
-    ...hashtags,
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .trim()
-    .toLowerCase();
+  const normalizedSearchText = buildSearchText({ ...input, hashtags });
 
   await db.withTransactionAsync(async () => {
     await db.runAsync(
@@ -241,11 +234,7 @@ export async function updateDatePlace(db: SQLiteDatabase, datePlaceId: string, i
   const yearMonth = `${year}-${String(month).padStart(2, '0')}`;
   const nextDateEntryId = `entry_${input.date}`;
   const hashtags = input.hashtags ?? [];
-  const normalizedSearchText = [input.placeName, input.address, input.oneLineDiary, ...hashtags]
-    .filter(Boolean)
-    .join(' ')
-    .trim()
-    .toLowerCase();
+  const normalizedSearchText = buildSearchText({ ...input, hashtags });
 
   await db.withTransactionAsync(async () => {
     await db.runAsync(
