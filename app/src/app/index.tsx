@@ -61,6 +61,7 @@ import {
   resolveDatePlaceConflict,
   type PushResult,
 } from '@/sync/cloud-sync';
+import { parseHashtagInput } from '@/utils/hashtag';
 import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
 
 type SelectedCoord = {
@@ -130,14 +131,7 @@ export default function HomeScreen() {
   const cardScrollRef = useRef<ScrollView | null>(null);
   const cardScrollIndexRef = useRef(0);
 
-  const hashtags = useMemo(
-    () =>
-      hashtagText
-        .split(/[,\s]+/)
-        .map((tag) => tag.trim().replace(/^#/, ''))
-        .filter(Boolean),
-    [hashtagText]
-  );
+  const hashtags = useMemo(() => parseHashtagInput(hashtagText), [hashtagText]);
 
   useEffect(() => {
     if (filteredPlaces.length < 2) {
