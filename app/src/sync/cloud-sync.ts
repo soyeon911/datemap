@@ -192,7 +192,20 @@ export async function backfillCoupleId(db: SQLiteDatabase, userId: string, coupl
   }
 }
 
-export async function pullRemoteChanges(db: SQLiteDatabase) {
+let lastPull: Promise<void> = Promise.resolve();
+
+// Login and couple loading can each trigger a pull at nearly the same moment, and
+// every call shares one SQLite connection. Overlapping withTransactionAsync calls
+// break each other: the second BEGIN fails, and its ROLLBACK cancels the first call's
+// open transaction. Each call waits its turn and reads the server itself, rather than
+// sharing a running pull, so a pull made right after a couple link sees the new rows.
+export function pullRemoteChanges(db: SQLiteDatabase) {
+  lastPull = lastPull.then(() => runPull(db));
+
+  return lastPull;
+}
+
+async function runPull(db: SQLiteDatabase) {
   try {
     // No .eq('user_id', ...) filter here: RLS already scopes these selects to rows
     // the caller owns or shares a couple with, so whatever comes back is visible.
