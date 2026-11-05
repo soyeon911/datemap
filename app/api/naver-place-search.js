@@ -1,7 +1,7 @@
 function setCorsHeaders(response) {
   response.setHeader('Access-Control-Allow-Origin', '*');
   response.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
 }
 
 function getQueryValue(value) {
@@ -10,6 +10,26 @@ function getQueryValue(value) {
   }
 
   return String(value ?? '').trim();
+}
+
+function getBearerToken(authorizationHeader) {
+  const match = String(authorizationHeader ?? '').match(/^Bearer\s+(\S+)$/i);
+
+  return match ? match[1] : null;
+}
+
+// Asks Supabase whether the token belongs to a signed-in user. The anon key only
+// identifies the project, so it is safe to use here.
+async function isValidSession(token, supabaseUrl, supabaseAnonKey) {
+  const authResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    method: 'GET',
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  return authResponse.ok;
 }
 
 function stripHtml(value = '') {
@@ -169,6 +189,23 @@ module.exports = async function handler(request, response) {
       return;
     }
 
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+
+    // Fails closed: a missing setting must not turn the proxy back into an open one.
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('[naver-place-search] SUPABASE_URL or SUPABASE_ANON_KEY is not set');
+      response.status(500).json({ error: 'AUTH_NOT_CONFIGURED' });
+      return;
+    }
+
+    const token = getBearerToken(request.headers?.authorization);
+
+    if (!token || !(await isValidSession(token, supabaseUrl, supabaseAnonKey))) {
+      response.status(401).json({ error: 'UNAUTHORIZED' });
+      return;
+    }
+
     const query = getQueryValue(request.query?.query);
 
     if (!query) {
@@ -184,12 +221,8 @@ module.exports = async function handler(request, response) {
     };
 
     if (!credentials.naverMapClientId || !credentials.naverMapClientSecret) {
-      response.status(500).json({
-        error: 'NAVER_MAP_CREDENTIALS_REQUIRED',
-        hasNaverMapClientId: Boolean(credentials.naverMapClientId),
-        hasNaverMapClientSecret: Boolean(credentials.naverMapClientSecret),
-        vercelEnv: process.env.VERCEL_ENV || null,
-      });
+      console.error('[naver-place-search] Naver Map credentials are not set');
+      response.status(500).json({ error: 'NAVER_MAP_CREDENTIALS_REQUIRED' });
       return;
     }
 
@@ -205,10 +238,6 @@ module.exports = async function handler(request, response) {
   } catch (error) {
     console.error('[naver-place-search] failed:', error);
 
-    response.status(500).json({
-      error: 'NAVER_PLACE_SEARCH_FAILED',
-      message: error instanceof Error ? error.message : String(error),
-      vercelEnv: process.env.VERCEL_ENV || null,
-    });
+    response.status(500).json({ error: 'NAVER_PLACE_SEARCH_FAILED' });
   }
 };
