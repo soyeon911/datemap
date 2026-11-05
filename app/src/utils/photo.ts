@@ -16,3 +16,8 @@ export function getPhotoExtension(uri: string) {
 
   return match?.[0] ?? '.jpg';
 }
+
+// Moves through a photo list, wrapping around at both ends.
+export function stepPhotoIndex(index: number, step: number, length: number) {
+  return (index + step + length) % length;
+}

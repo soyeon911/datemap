@@ -2,7 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { SymbolView } from 'expo-symbols';
 import { useSQLiteContext } from 'expo-sqlite';
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -19,26 +19,42 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CalendarPicker } from '@/components/home/calendar-picker';
+import { FullScreenPhotoModal } from '@/components/home/full-screen-photo-modal';
+import { modalStyles } from '@/components/home/modal-styles';
+import { PlaceGroupModal } from '@/components/home/place-group-modal';
+import { PeriodPanel } from '@/components/home/period-panel';
+import { PlaceDetailModal } from '@/components/home/place-detail-modal';
+import { SavedPlaceCard } from '@/components/home/saved-place-card';
+import {
+  Section,
+  TextBadge,
+  TextBody,
+  TextButton,
+  TextLabel,
+  TextSecondaryButton,
+  TextSectionTitle,
+  TextTitle,
+  textStyles,
+} from '@/components/home/text';
 import { DateMapView } from '@/components/map/date-map-view';
 import { SavedPlacesMap } from '@/components/map/saved-places-map';
-import { findDistrictBoundary, findProvinceBoundary, type Coord } from '@/data/korea-boundaries';
+import { today } from '@/constants/today';
 import {
-  countDateCards,
   createDateCard,
   deleteDatePlace,
-  getSavedDatePlaces,
   updateDatePlace,
   type SavedDatePlace,
 } from '@/db/date-cards';
+import { useDateFilter } from '@/hooks/use-date-filter';
+import { useMapGrouping } from '@/hooks/use-map-grouping';
+import { useSavedPlaces } from '@/hooks/use-saved-places';
 import { useAuth } from '@/lib/auth-context';
 import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
 import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
-import { getLast30DaysRange, getMonthRange, getWeekRange, getYearOptions, toDateString } from '@/utils/date';
 import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
-import { groupPlacesByRegion, type PlaceGroup } from '@/utils/place-group';
 
-type DatabaseState = 'checking' | 'ready' | 'failed';
 type SelectedCoord = {
   latitude: number;
   longitude: number;
@@ -46,31 +62,38 @@ type SelectedCoord = {
 type SelectedPhoto = {
   uri: string;
 };
-type CalendarTarget = 'start' | 'end';
 type DatePickerMode = 'range' | 'week';
-type FilterPreset = 'all' | 'this_week' | 'this_month' | 'last_30_days';
-type MapGroupMode = 'none' | 'city' | 'district';
 
-const today = toDateString(new Date());
-const weekdays = ['일', '월', '화', '수', '목', '금', '토'];
-const monthLabels = Array.from({ length: 12 }, (_, index) => `${index + 1}월`);
 const dateMapLogo = require('@/assets/images/splash-icon.png');
-const filterPresetLabels: Record<FilterPreset, string> = {
-  all: '전체 기간',
-  this_week: '이번 주',
-  this_month: '이번 달',
-  last_30_days: '최근 30일',
-};
-
 export default function HomeScreen() {
   const db = useSQLiteContext();
   const { session, signOut } = useAuth();
   const { couple, createInvite, joinWithCode, leaveCouple } = useCouple();
-  const pulledUserIdRef = useRef<string | null>(null);
-  const pulledCoupleIdRef = useRef<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [databaseState, setDatabaseState] = useState<DatabaseState>('checking');
-  const [datePlaceCount, setDatePlaceCount] = useState(0);
+  const { savedPlaces, datePlaceCount, databaseState, isRefreshing, refreshDatePlaces, handlePullToRefresh } =
+    useSavedPlaces();
+  const {
+    filteredPlaces,
+    activeDates,
+    filterStartDate,
+    filterEndDate,
+    filterLabel,
+    activeFilterDate,
+    isFilterDropdownVisible,
+    toggleFilterDropdown,
+    selectFilterDate,
+    selectWeekFilter,
+    applyFilterPreset,
+  } = useDateFilter(savedPlaces);
+  const {
+    mapGroupMode,
+    mapModeConfig,
+    placeGroups,
+    mapMarkers,
+    regionBoundaries,
+    selectedGroup,
+    setSelectedGroup,
+    cycleMapGroupMode,
+  } = useMapGrouping(filteredPlaces);
   const [selectedCoord, setSelectedCoord] = useState<SelectedCoord | null>(null);
   const [date, setDate] = useState(today);
   const [placeName, setPlaceName] = useState('');
@@ -85,20 +108,11 @@ export default function HomeScreen() {
   const [oneLineDiary, setOneLineDiary] = useState('');
   const [hashtagText, setHashtagText] = useState('');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [savedPlaces, setSavedPlaces] = useState<SavedDatePlace[]>([]);
-  const [filterStartDate, setFilterStartDate] = useState('');
-  const [filterEndDate, setFilterEndDate] = useState('');
-  const [calendarTarget, setCalendarTarget] = useState<CalendarTarget>('start');
-  const [filterPreset, setFilterPreset] = useState<FilterPreset>('all');
-  const [isFilterDropdownVisible, setIsFilterDropdownVisible] = useState(false);
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
-  const [mapGroupMode, setMapGroupMode] = useState<MapGroupMode>('none');
-  const [selectedGroup, setSelectedGroup] = useState<PlaceGroup | null>(null);
   const [datePickerMode, setDatePickerMode] = useState<DatePickerMode>('range');
   const [isEditorVisible, setIsEditorVisible] = useState(false);
   const [selectedSavedPlace, setSelectedSavedPlace] = useState<SavedDatePlace | null>(null);
   const [editingDatePlace, setEditingDatePlace] = useState<SavedDatePlace | null>(null);
-  const [detailPhotoIndex, setDetailPhotoIndex] = useState(0);
   const [fullScreenPhotoUri, setFullScreenPhotoUri] = useState<string | null>(null);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isSettingsVisible, setIsSettingsVisible] = useState(false);
@@ -117,134 +131,6 @@ export default function HomeScreen() {
     [hashtagText]
   );
 
-  const filteredPlaces = useMemo(() => {
-    return savedPlaces.filter((place) => {
-      if (filterStartDate && place.date < filterStartDate) {
-        return false;
-      }
-
-      if (filterEndDate && place.date > filterEndDate) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [filterEndDate, filterStartDate, savedPlaces]);
-
-  const placeGroups = useMemo(
-    () => (mapGroupMode === 'none' ? [] : groupPlacesByRegion(filteredPlaces, mapGroupMode)),
-    [filteredPlaces, mapGroupMode]
-  );
-
-  const mapMarkers = useMemo(() => {
-    if (mapGroupMode === 'none') {
-      return filteredPlaces;
-    }
-
-    return placeGroups.map((group) => ({
-      id: group.key,
-      placeName: group.label,
-      latitude: group.latitude,
-      longitude: group.longitude,
-    }));
-  }, [mapGroupMode, filteredPlaces, placeGroups]);
-
-  const regionBoundaries = useMemo(() => {
-    const boundaries: { key: string; rings: Coord[][] }[] = [];
-
-    if (mapGroupMode === 'none') {
-      return boundaries;
-    }
-
-    const findBoundary = mapGroupMode === 'city' ? findProvinceBoundary : findDistrictBoundary;
-
-    for (const group of placeGroups) {
-      const rings = findBoundary(group.regionName);
-
-      if (rings) {
-        boundaries.push({ key: group.key, rings });
-      }
-    }
-
-    return boundaries;
-  }, [mapGroupMode, placeGroups]);
-
-  const activeDates = useMemo(() => Array.from(new Set(savedPlaces.map((place) => place.date))), [savedPlaces]);
-  const filterLabel = useMemo(() => {
-    if (filterStartDate && filterEndDate) {
-      return `${filterStartDate} ~ ${filterEndDate}`;
-    }
-
-    if (filterStartDate) {
-      return `${filterStartDate}부터`;
-    }
-
-    if (filterEndDate) {
-      return `${filterEndDate}까지`;
-    }
-
-    return filterPresetLabels[filterPreset];
-  }, [filterEndDate, filterPreset, filterStartDate]);
-
-  const detailPhotoUris = useMemo(
-    () => (selectedSavedPlace ? getOrderedPhotoUris(selectedSavedPlace) : []),
-    [selectedSavedPlace]
-  );
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadDatabaseStatus() {
-      try {
-        const [count, places] = await Promise.all([countDateCards(db), getSavedDatePlaces(db)]);
-
-        if (isMounted) {
-          setDatePlaceCount(count);
-          setSavedPlaces(places);
-          setDatabaseState('ready');
-        }
-      } catch {
-        if (isMounted) {
-          setDatabaseState('failed');
-        }
-      }
-    }
-
-    loadDatabaseStatus();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [db]);
-
-  useEffect(() => {
-    const userId = session?.user.id ?? null;
-
-    if (!userId || pulledUserIdRef.current === userId) {
-      return;
-    }
-
-    pulledUserIdRef.current = userId;
-
-    pullRemoteChanges(db).then(() => refreshDatePlaces());
-    // refreshDatePlaces intentionally omitted: it's redefined every render, and the
-    // pulledUserIdRef guard above already ensures this only runs once per login.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, session]);
-
-  useEffect(() => {
-    const coupleId = couple?.id ?? null;
-
-    if (!coupleId || pulledCoupleIdRef.current === coupleId) {
-      return;
-    }
-
-    pulledCoupleIdRef.current = coupleId;
-
-    pullRemoteChanges(db).then(() => refreshDatePlaces());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, couple]);
-
   useEffect(() => {
     if (filteredPlaces.length < 2) {
       return;
@@ -260,24 +146,6 @@ export default function HomeScreen() {
 
     return () => clearInterval(timer);
   }, [filteredPlaces.length]);
-
-  async function refreshDatePlaces() {
-    const [count, places] = await Promise.all([countDateCards(db), getSavedDatePlaces(db)]);
-    setDatePlaceCount(count);
-    setSavedPlaces(places);
-    setDatabaseState('ready');
-  }
-
-  async function handlePullToRefresh() {
-    setIsRefreshing(true);
-
-    try {
-      await pullRemoteChanges(db);
-      await refreshDatePlaces();
-    } finally {
-      setIsRefreshing(false);
-    }
-  }
 
   function openAddPlaceModal() {
     setDate(today);
@@ -492,73 +360,7 @@ export default function HomeScreen() {
     ]);
   }
 
-  function selectFilterDate(nextDate: string) {
-    setFilterPreset('all');
-
-    const hasStartDate = Boolean(filterStartDate);
-    const hasEndDate = Boolean(filterEndDate);
-
-    // 1. 아무것도 선택 안 했거나, 이미 시작/종료가 모두 선택된 상태면 새로 시작
-    if (!hasStartDate || (hasStartDate && hasEndDate)) {
-      setFilterStartDate(nextDate);
-      setFilterEndDate('');
-      setCalendarTarget('end');
-      return;
-    }
-
-    // 2. 시작일만 있는 상태에서 시작일보다 이전 날짜를 누르면 새로 시작
-    if (nextDate < filterStartDate) {
-      setFilterStartDate(nextDate);
-      setFilterEndDate('');
-      setCalendarTarget('end');
-      return;
-    }
-
-    // 3. 시작일 이후 날짜면 종료일로 설정
-    setFilterEndDate(nextDate);
-    setCalendarTarget('start');
-  }
-
-  const activeFilterDate = calendarTarget === 'start' ? filterStartDate || today : filterEndDate || today;
-
-  function applyFilterPreset(preset: FilterPreset) {
-    setFilterPreset(preset);
-    setIsFilterDropdownVisible(false);
-
-    if (preset === 'all') {
-      setFilterStartDate('');
-      setFilterEndDate('');
-      return;
-    }
-
-    if (preset === 'this_week') {
-      const range = getWeekRange(today);
-      setFilterStartDate(range.start);
-      setFilterEndDate(range.end);
-      return;
-    }
-
-    if (preset === 'this_month') {
-      const range = getMonthRange(today);
-      setFilterStartDate(range.start);
-      setFilterEndDate(range.end);
-      return;
-    }
-
-    const range = getLast30DaysRange(today);
-    setFilterStartDate(range.start);
-    setFilterEndDate(range.end);
-  }
-
-  function selectWeekFilter(nextDate: string) {
-    const range = getWeekRange(nextDate);
-    setFilterPreset('all');
-    setFilterStartDate(range.start);
-    setFilterEndDate(range.end);
-  }
-
   function openPlaceDetail(place: SavedDatePlace) {
-    setDetailPhotoIndex(0);
     setSelectedSavedPlace(place);
   }
 
@@ -619,8 +421,8 @@ export default function HomeScreen() {
           <View style={styles.brandBlock}>
             <Image source={dateMapLogo} style={styles.headerLogo} />
             <View style={styles.brandText}>
-              <Text style={[styles.title, isDarkMode && styles.titleDark]}>DearMap</Text>
-              <Text style={[styles.label, isDarkMode && styles.labelDark]}>함께한 순간을 장소와 함께 기록해요</Text>
+              <Text style={[textStyles.title, isDarkMode && styles.titleDark]}>DearMap</Text>
+              <Text style={[textStyles.label, isDarkMode && styles.labelDark]}>함께한 순간을 장소와 함께 기록해요</Text>
             </View>
           </View>
           <View style={styles.headerActions}>
@@ -655,8 +457,8 @@ export default function HomeScreen() {
           <View style={styles.mainNaverMapPanel}>
             <SavedPlacesMap
               places={mapMarkers}
-              minRegionDelta={mapGroupMode === 'city' ? 0.25 : mapGroupMode === 'district' ? 0.05 : 0.03}
-              markerSize={mapGroupMode === 'city' ? 46 : mapGroupMode === 'district' ? 36 : 34}
+              minRegionDelta={mapModeConfig.minRegionDelta}
+              markerSize={mapModeConfig.markerSize}
               regionBoundaries={regionBoundaries}
               onSelectPlace={(place) => {
                 if (mapGroupMode !== 'none') {
@@ -677,12 +479,8 @@ export default function HomeScreen() {
             />
             <Pressable
               style={styles.mapGroupToggleButton}
-              onPress={() =>
-                setMapGroupMode((current) => (current === 'none' ? 'city' : current === 'city' ? 'district' : 'none'))
-              }>
-              <Text style={styles.mapGroupToggleButtonText}>
-                {mapGroupMode === 'none' ? '전체보기' : mapGroupMode === 'city' ? '시/도별' : '시/군/구별'}
-              </Text>
+              onPress={cycleMapGroupMode}>
+              <Text style={styles.mapGroupToggleButtonText}>{mapModeConfig.toggleLabel}</Text>
             </Pressable>
             {filteredPlaces.length === 0 ? (
               <View style={styles.emptyMapOverlay}>
@@ -691,38 +489,13 @@ export default function HomeScreen() {
             ) : null}
           </View>
 
-          <View style={styles.periodPanel}>
-            <Pressable
-              style={styles.filterDropdownButton}
-              onPress={() => setIsFilterDropdownVisible((isVisible) => !isVisible)}>
-              <View>
-                <Text style={styles.filterDropdownLabel}>날짜 필터</Text>
-                <Text style={styles.filterDropdownValue}>{filterLabel}</Text>
-              </View>
-              <Text style={styles.dropdownChevron}>⌄</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel="날짜 필터 열기"
-              style={styles.calendarIconButton}
-              onPress={() => setIsDatePickerVisible(true)}>
-              <SymbolView
-                name="calendar"
-                size={23}
-                tintColor="#F8EFEC"
-                weight="semibold"
-                fallback={<Text style={styles.calendarIconText}>□</Text>}
-              />
-            </Pressable>
-            {isFilterDropdownVisible ? (
-              <View style={styles.filterDropdownMenu}>
-                {(Object.keys(filterPresetLabels) as FilterPreset[]).map((preset) => (
-                  <Pressable key={preset} style={styles.filterDropdownItem} onPress={() => applyFilterPreset(preset)}>
-                    <Text style={styles.filterDropdownItemText}>{filterPresetLabels[preset]}</Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-          </View>
+          <PeriodPanel
+            filterLabel={filterLabel}
+            isDropdownVisible={isFilterDropdownVisible}
+            onToggleDropdown={toggleFilterDropdown}
+            onOpenCalendar={() => setIsDatePickerVisible(true)}
+            onSelectPreset={applyFilterPreset}
+          />
         </View>
 
         <View style={styles.bottomDock}>
@@ -760,8 +533,8 @@ export default function HomeScreen() {
                 <TextLabel>날짜 필터</TextLabel>
                 <TextSectionTitle>기간 또는 주차 선택</TextSectionTitle>
               </View>
-              <Pressable style={styles.modalCloseButton} onPress={() => setIsDatePickerVisible(false)}>
-                <Text style={styles.modalCloseButtonText}>닫기</Text>
+              <Pressable style={modalStyles.modalCloseButton} onPress={() => setIsDatePickerVisible(false)}>
+                <Text style={modalStyles.modalCloseButtonText}>닫기</Text>
               </Pressable>
             </View>
 
@@ -782,24 +555,11 @@ export default function HomeScreen() {
               </Pressable>
             </View>
 
-            {datePickerMode === 'range' ? (
-              <View style={styles.periodButtonRow}>
-                <View style={[styles.periodButton, calendarTarget === 'start' && styles.periodButtonActive]}>
-                  <Text style={[styles.periodButtonText, calendarTarget === 'start' && styles.periodButtonTextActive]}>
-                    
-                  </Text>
-                </View>
-                <View style={[styles.periodButton, calendarTarget === 'end' && styles.periodButtonActive]}>
-                  <Text style={[styles.periodButtonText, calendarTarget === 'end' && styles.periodButtonTextActive]}>
-                    
-                  </Text>
-                </View>
-              </View>
-            ) : (
+            {datePickerMode === 'week' ? (
               <View style={styles.weekHintBox}>
                 <Text style={styles.weekHintText}>날짜를 선택하면 해당 주의 월요일부터 일요일까지 필터링합니다.</Text>
               </View>
-            )}
+            ) : null}
 
             <CalendarPicker
               key={`filter_${datePickerMode}_${activeFilterDate}`}
@@ -827,15 +587,15 @@ export default function HomeScreen() {
         transparent
         visible={isSettingsVisible}
         onRequestClose={() => setIsSettingsVisible(false)}>
-        <Pressable style={styles.settingsOverlay} onPress={() => setIsSettingsVisible(false)}>
-          <Pressable style={styles.settingsSheet} onPress={(event) => event.stopPropagation()}>
-            <View style={styles.settingsHeader}>
+        <Pressable style={modalStyles.settingsOverlay} onPress={() => setIsSettingsVisible(false)}>
+          <Pressable style={modalStyles.settingsSheet} onPress={(event) => event.stopPropagation()}>
+            <View style={modalStyles.settingsHeader}>
               <View>
                 <TextLabel>DearMap</TextLabel>
                 <TextSectionTitle>설정 및 정보</TextSectionTitle>
               </View>
-              <Pressable style={styles.modalCloseButton} onPress={() => setIsSettingsVisible(false)}>
-                <Text style={styles.modalCloseButtonText}>닫기</Text>
+              <Pressable style={modalStyles.modalCloseButton} onPress={() => setIsSettingsVisible(false)}>
+                <Text style={modalStyles.modalCloseButtonText}>닫기</Text>
               </Pressable>
             </View>
             <View style={styles.settingsRow}>
@@ -923,8 +683,8 @@ export default function HomeScreen() {
                 <TextLabel>{editingDatePlace ? '데이트 장소 수정' : '새 데이트 장소'}</TextLabel>
                 <TextTitle>{editingDatePlace ? '장소 기록 수정' : '장소 기록 추가'}</TextTitle>
               </View>
-              <Pressable style={styles.modalCloseButton} onPress={closeAddPlaceModal}>
-                <Text style={styles.modalCloseButtonText}>닫기</Text>
+              <Pressable style={modalStyles.modalCloseButton} onPress={closeAddPlaceModal}>
+                <Text style={modalStyles.modalCloseButtonText}>닫기</Text>
               </Pressable>
             </View>
 
@@ -1074,341 +834,26 @@ export default function HomeScreen() {
         </SafeAreaView>
       </Modal>
 
-      <Modal
-        animationType="fade"
-        transparent
-        visible={selectedSavedPlace !== null}
-        onRequestClose={() => setSelectedSavedPlace(null)}>
-        <Pressable style={styles.detailOverlay} onPress={() => setSelectedSavedPlace(null)}>
-          {selectedSavedPlace ? (
-            <Pressable style={styles.detailSheet} onPress={(event) => event.stopPropagation()}>
-              <View style={styles.detailActionBar}>
-                <Pressable style={styles.detailActionButton} onPress={() => setSelectedSavedPlace(null)}>
-                  <Text style={styles.detailActionText}>닫기</Text>
-                </Pressable>
-                {selectedSavedPlace.ownerUserId === null || selectedSavedPlace.ownerUserId === session?.user.id ? (
-                  <>
-                    <Pressable
-                      style={styles.detailActionButton}
-                      onPress={() => openEditPlaceModal(selectedSavedPlace)}>
-                      <Text style={styles.detailActionText}>수정</Text>
-                    </Pressable>
-                    <Pressable style={styles.detailDeleteButton} onPress={() => confirmDeletePlace(selectedSavedPlace)}>
-                      <Text style={styles.detailDeleteText}>삭제</Text>
-                    </Pressable>
-                  </>
-                ) : (
-                  <Text style={styles.detailActionText}>상대방이 남긴 기록이에요</Text>
-                )}
-              </View>
+      <PlaceDetailModal
+        place={selectedSavedPlace}
+        currentUserId={session?.user.id}
+        onClose={() => setSelectedSavedPlace(null)}
+        onEdit={openEditPlaceModal}
+        onDelete={confirmDeletePlace}
+        onOpenPhoto={setFullScreenPhotoUri}
+      />
 
-              {detailPhotoUris.length > 0 ? (
-                <View style={styles.detailImageFrame}>
-                  <Pressable
-                    style={styles.detailImageButton}
-                    onPress={(event) => {
-                      event.stopPropagation();
-                      setFullScreenPhotoUri(detailPhotoUris[detailPhotoIndex]);
-                    }}>
-                    <Image
-                      source={{ uri: detailPhotoUris[detailPhotoIndex] }}
-                      style={styles.detailImage}
-                      resizeMode="contain"
-                    />
-                  </Pressable>
-                  {detailPhotoUris.length > 1 ? (
-                    <>
-                      <Pressable
-                        accessibilityLabel="이전 사진"
-                        style={[styles.photoNavButton, styles.photoNavButtonLeft]}
-                        onPress={() =>
-                          setDetailPhotoIndex(
-                            (currentIndex) => (currentIndex - 1 + detailPhotoUris.length) % detailPhotoUris.length
-                          )
-                        }>
-                        <Text style={styles.photoNavButtonText}>‹</Text>
-                      </Pressable>
-                      <Pressable
-                        accessibilityLabel="다음 사진"
-                        style={[styles.photoNavButton, styles.photoNavButtonRight]}
-                        onPress={() =>
-                          setDetailPhotoIndex((currentIndex) => (currentIndex + 1) % detailPhotoUris.length)
-                        }>
-                        <Text style={styles.photoNavButtonText}>›</Text>
-                      </Pressable>
-                      <View style={styles.photoPager}>
-                        {detailPhotoUris.map((uri, index) => (
-                          <Pressable
-                            key={`${uri}_${index}`}
-                            accessibilityLabel={`${index + 1}번째 사진 보기`}
-                            style={[styles.photoPagerDot, index === detailPhotoIndex && styles.photoPagerDotActive]}
-                            onPress={() => setDetailPhotoIndex(index)}
-                          />
-                        ))}
-                      </View>
-                    </>
-                  ) : null}
-                </View>
-              ) : (
-                <View style={styles.detailImagePlaceholder}>
-                  <Text style={styles.savedCardImagePlaceholderText}>대표 사진 없음</Text>
-                </View>
-              )}
+      <FullScreenPhotoModal uri={fullScreenPhotoUri} onClose={() => setFullScreenPhotoUri(null)} />
 
-              <View style={styles.detailContent}>
-                <Text style={styles.detailTitle}>{selectedSavedPlace.placeName}</Text>
-                <Text style={styles.detailDate}>{selectedSavedPlace.date}</Text>
-                <Text style={styles.savedCardMeta}>사진 {selectedSavedPlace.photoCount}장 저장됨</Text>
-                {selectedSavedPlace.oneLineDiary ? (
-                  <Text style={styles.detailDiary}>{selectedSavedPlace.oneLineDiary}</Text>
-                ) : null}
-                {selectedSavedPlace.hashtags.length > 0 ? (
-                  <View style={styles.savedHashtagRow}>
-                    {selectedSavedPlace.hashtags.map((tag) => (
-                      <View key={tag} style={styles.savedHashtagChip}>
-                        <Text style={styles.savedHashtagText}>#{tag}</Text>
-                      </View>
-                    ))}
-                  </View>
-                ) : null}
-              </View>
-            </Pressable>
-          ) : null}
-        </Pressable>
-      </Modal>
-
-      <Modal
-        animationType="fade"
-        transparent
-        visible={fullScreenPhotoUri !== null}
-        onRequestClose={() => setFullScreenPhotoUri(null)}>
-        <Pressable style={styles.fullScreenPhotoOverlay} onPress={() => setFullScreenPhotoUri(null)}>
-          {fullScreenPhotoUri ? (
-            <>
-              <Image source={{ uri: fullScreenPhotoUri }} style={styles.fullScreenPhoto} resizeMode="contain" />
-              <View style={styles.fullScreenPhotoClose}>
-                <Text style={styles.fullScreenPhotoCloseText}>닫기</Text>
-              </View>
-            </>
-          ) : null}
-        </Pressable>
-      </Modal>
-
-      <Modal
-        animationType="fade"
-        transparent
-        visible={selectedGroup !== null}
-        onRequestClose={() => setSelectedGroup(null)}>
-        <Pressable style={styles.settingsOverlay} onPress={() => setSelectedGroup(null)}>
-          {selectedGroup ? (
-            <Pressable style={styles.settingsSheet} onPress={(event) => event.stopPropagation()}>
-              <View style={styles.settingsHeader}>
-                <TextSectionTitle>{selectedGroup.label}</TextSectionTitle>
-                <Pressable style={styles.modalCloseButton} onPress={() => setSelectedGroup(null)}>
-                  <Text style={styles.modalCloseButtonText}>닫기</Text>
-                </Pressable>
-              </View>
-              <ScrollView style={styles.groupPlaceList}>
-                {selectedGroup.places.map((place) => (
-                  <Pressable
-                    key={place.id}
-                    style={styles.groupPlaceRow}
-                    onPress={() => {
-                      setSelectedGroup(null);
-                      openPlaceDetail(place);
-                    }}>
-                    <Text style={styles.groupPlaceRowTitle}>{place.placeName}</Text>
-                    <Text style={styles.groupPlaceRowDate}>{place.date}</Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
-            </Pressable>
-          ) : null}
-        </Pressable>
-      </Modal>
+      <PlaceGroupModal
+        group={selectedGroup}
+        onClose={() => setSelectedGroup(null)}
+        onSelectPlace={(place) => {
+          setSelectedGroup(null);
+          openPlaceDetail(place);
+        }}
+      />
     </SafeAreaView>
-  );
-}
-
-function CalendarPicker({
-  selectedDate,
-  onSelectDate,
-  activeDates = [],
-  rangeStartDate,
-  rangeEndDate,
-}: {
-  selectedDate: string;
-  onSelectDate: (date: string) => void;
-  activeDates?: string[];
-  rangeStartDate?: string;
-  rangeEndDate?: string;
-}) {
-  const safeSelectedDate = selectedDate || today;
-  const selected = new Date(`${safeSelectedDate}T00:00:00`);
-  const [displayYear, setDisplayYear] = useState(selected.getFullYear());
-  const [displayMonth, setDisplayMonth] = useState(selected.getMonth());
-  const [openSelector, setOpenSelector] = useState<'year' | 'month' | null>(null);
-  const yearOptions = useMemo(() => getYearOptions(displayYear), [displayYear]);
-
-  const year = displayYear;
-  const month = displayMonth;
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDay = new Date(year, month, 1).getDay();
-  const cells = [
-    ...Array.from({ length: firstDay }, (_, index) => ({ key: `empty_start_${index}`, day: null })),
-    ...Array.from({ length: daysInMonth }, (_, index) => ({ key: `day_${index + 1}`, day: index + 1 })),
-  ];
-  const trailingEmptyCellCount = (7 - (cells.length % 7)) % 7;
-  const paddedCells = [
-    ...cells,
-    ...Array.from({ length: trailingEmptyCellCount }, (_, index) => ({ key: `empty_end_${index}`, day: null })),
-  ];
-  const calendarWeeks = Array.from({ length: Math.ceil(paddedCells.length / 7) }, (_, weekIndex) =>
-    paddedCells.slice(weekIndex * 7, weekIndex * 7 + 7)
-  );
-
-  return (
-    <View style={styles.calendar}>
-      <View style={styles.calendarSelectorRow}>
-        <View style={styles.calendarSelectorGroup}>
-          <Pressable
-            style={styles.calendarSelectorButton}
-            onPress={() => setOpenSelector(openSelector === 'year' ? null : 'year')}>
-            <Text style={styles.calendarSelectorText}>{year}년</Text>
-            <Text style={styles.calendarSelectorChevron}>⌄</Text>
-          </Pressable>
-          {openSelector === 'year' ? (
-            <ScrollView
-              style={styles.calendarSelectorMenu}
-              nestedScrollEnabled
-              showsVerticalScrollIndicator={false}>
-              {yearOptions.map((yearOption) => (
-                <Pressable
-                  key={yearOption}
-                  style={[styles.calendarSelectorItem, yearOption === year && styles.calendarSelectorItemActive]}
-                  onPress={() => {
-                    setDisplayYear(yearOption);
-                    setOpenSelector(null);
-                  }}>
-                  <Text
-                    style={[
-                      styles.calendarSelectorItemText,
-                      yearOption === year && styles.calendarSelectorItemTextActive,
-                    ]}>
-                    {yearOption}년
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          ) : null}
-        </View>
-
-        <View style={styles.calendarSelectorGroup}>
-          <Pressable
-            style={styles.calendarSelectorButton}
-            onPress={() => setOpenSelector(openSelector === 'month' ? null : 'month')}>
-            <Text style={styles.calendarSelectorText}>{month + 1}월</Text>
-            <Text style={styles.calendarSelectorChevron}>⌄</Text>
-          </Pressable>
-          {openSelector === 'month' ? (
-            <ScrollView
-              style={styles.calendarSelectorMenu}
-              nestedScrollEnabled
-              showsVerticalScrollIndicator={false}>
-              {monthLabels.map((monthLabel, monthIndex) => (
-                <Pressable
-                  key={monthLabel}
-                  style={[styles.calendarSelectorItem, monthIndex === month && styles.calendarSelectorItemActive]}
-                  onPress={() => {
-                    setDisplayMonth(monthIndex);
-                    setOpenSelector(null);
-                  }}>
-                  <Text
-                    style={[
-                      styles.calendarSelectorItemText,
-                      monthIndex === month && styles.calendarSelectorItemTextActive,
-                    ]}>
-                    {monthLabel}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          ) : null}
-        </View>
-      </View>
-      <View style={styles.weekdayRow}>
-        {weekdays.map((weekday) => (
-          <Text key={weekday} style={styles.weekdayText}>
-            {weekday}
-          </Text>
-        ))}
-      </View>
-      <View style={styles.calendarGrid}>
-        {calendarWeeks.map((week, weekIndex) => (
-          <View key={`week_${weekIndex}`} style={styles.calendarWeekRow}>
-            {week.map((cell) => {
-              if (!cell.day) {
-                return <View key={cell.key} style={styles.calendarCell} />;
-              }
-
-              const cellDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(cell.day).padStart(2, '0')}`;
-              const isSelected = cellDate === safeSelectedDate;
-              const isInRange = Boolean(
-                rangeStartDate && rangeEndDate && cellDate >= rangeStartDate && cellDate <= rangeEndDate
-              );
-              const isActiveDate = activeDates.includes(cellDate);
-
-              return (
-                <Pressable
-                  key={cell.key}
-                  style={[
-                    styles.calendarCell,
-                    isInRange && styles.calendarCellInRange,
-                    isSelected && styles.calendarCellSelected,
-                  ]}
-                  onPress={() => onSelectDate(cellDate)}>
-                  <Text style={[styles.calendarDayText, isSelected && styles.calendarDayTextSelected]}>{cell.day}</Text>
-                  {isActiveDate ? (
-                    <View style={[styles.activeDateDot, isSelected && styles.activeDateDotSelected]} />
-                  ) : null}
-                </Pressable>
-              );
-            })}
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function SavedPlaceCard({ place, onPress }: { place: SavedDatePlace; onPress: () => void }) {
-  return (
-    <Pressable style={styles.savedCard} onPress={onPress}>
-      {place.coverPhotoUri ? (
-        <Image source={{ uri: place.coverPhotoUri }} style={styles.savedCardImage} resizeMode="cover" />
-      ) : (
-        <View style={styles.savedCardImagePlaceholder}>
-          <Text style={styles.savedCardImagePlaceholderText}>사진 없음</Text>
-        </View>
-      )}
-      <View style={styles.savedCardContent}>
-        <Text style={styles.savedCardTitle}>{place.placeName}</Text>
-        <Text style={styles.savedCardDate}>{place.date}</Text>
-        <Text style={styles.savedCardDiary} numberOfLines={2}>
-          {place.oneLineDiary || '한 줄 일기가 없습니다.'}
-        </Text>
-        <Text style={styles.savedCardMeta}>사진 {place.photoCount}장</Text>
-        {place.hashtags.length > 0 ? (
-          <View style={styles.savedHashtagRow}>
-            {place.hashtags.slice(0, 3).map((tag) => (
-              <View key={tag} style={styles.savedHashtagChip}>
-                <Text style={styles.savedHashtagText}>#{tag}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-      </View>
-    </Pressable>
   );
 }
 
@@ -1433,38 +878,6 @@ async function copyPhotoToAppStorage(uri: string, index: number) {
   } catch {
     return uri;
   }
-}
-
-function Section({ children }: { children: ReactNode }) {
-  return <View style={styles.section}>{children}</View>;
-}
-
-function TextLabel({ children }: { children: ReactNode }) {
-  return <Text style={styles.label}>{children}</Text>;
-}
-
-function TextTitle({ children }: { children: ReactNode }) {
-  return <Text style={styles.title}>{children}</Text>;
-}
-
-function TextSectionTitle({ children }: { children: ReactNode }) {
-  return <Text style={styles.sectionTitle}>{children}</Text>;
-}
-
-function TextBody({ children }: { children: ReactNode }) {
-  return <Text style={styles.body}>{children}</Text>;
-}
-
-function TextBadge({ children }: { children: ReactNode }) {
-  return <Text style={styles.badgeText}>{children}</Text>;
-}
-
-function TextButton({ children }: { children: ReactNode }) {
-  return <Text style={styles.buttonText}>{children}</Text>;
-}
-
-function TextSecondaryButton({ children }: { children: ReactNode }) {
-  return <Text style={styles.secondaryButtonText}>{children}</Text>;
 }
 
 const styles = StyleSheet.create({
@@ -1513,19 +926,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 8,
   },
-  label: {
-    color: '#73685C',
-    fontSize: 13,
-    fontWeight: '700',
-  },
   labelDark: {
     color: '#C9BDB0',
-  },
-  title: {
-    color: '#342725',
-    fontSize: 28,
-    fontWeight: '800',
-    marginTop: 4,
   },
   titleDark: {
     color: '#EADCD8',
@@ -1535,11 +937,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#E6D4D0',
     paddingHorizontal: 12,
     paddingVertical: 7,
-  },
-  badgeText: {
-    color: '#7C4F58',
-    fontSize: 12,
-    fontWeight: '800',
   },
   darkModeButton: {
     minWidth: 64,
@@ -1605,29 +1002,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  section: {
-    borderRadius: 10,
-    backgroundColor: '#F8EFEC',
-    borderWidth: 1,
-    borderColor: '#D8C4BE',
-    padding: 15,
-    gap: 10,
-  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-  },
-  sectionTitle: {
-    color: '#342725',
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  body: {
-    color: '#625850',
-    fontSize: 14,
-    lineHeight: 20,
   },
   mainNaverMapPanel: {
     height: 252,
@@ -1637,24 +1016,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#E5D8D4',
     borderWidth: 1,
     borderColor: '#D2BEB8',
-  },
-  settingsOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(52,39,37,0.36)',
-  },
-  settingsSheet: {
-    gap: 14,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    backgroundColor: '#F8EFEC',
-    padding: 18,
-  },
-  settingsHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 14,
   },
   settingsRow: {
     flexDirection: 'row',
@@ -1701,29 +1062,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
-  groupPlaceList: {
-    maxHeight: 360,
-  },
-  groupPlaceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 10,
-    backgroundColor: '#F1E5E1',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 8,
-  },
-  groupPlaceRowTitle: {
-    color: '#342725',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  groupPlaceRowDate: {
-    color: '#7A6F65',
-    fontSize: 13,
-    fontWeight: '600',
-  },
   emptyMapOverlay: {
     position: 'absolute',
     left: 18,
@@ -1741,288 +1079,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
-  periodPanel: {
-    position: 'relative',
-    flexDirection: 'row',
-    gap: 8,
-    zIndex: 10,
-  },
-  filterDropdownButton: {
-    flex: 1,
-    minHeight: 54,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#D2BEB8',
-    backgroundColor: '#F1E5E1',
-    paddingHorizontal: 13,
-    paddingVertical: 8,
-  },
-  filterDropdownLabel: {
-    color: '#8B8076',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  filterDropdownValue: {
-    color: '#342725',
-    fontSize: 14,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  dropdownChevron: {
-    color: '#625850',
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  calendarIconButton: {
-    width: 54,
-    minHeight: 54,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-    backgroundColor: '#A86873',
-  },
-  calendarIconText: {
-    color: '#F8EFEC',
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  filterDropdownMenu: {
-    position: 'absolute',
-    left: 0,
-    right: 62,
-    top: 62,
-    zIndex: 20,
-    overflow: 'hidden',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#D8C4BE',
-    backgroundColor: '#F8EFEC',
-  },
-  filterDropdownItem: {
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E7D2CD',
-  },
-  filterDropdownItemText: {
-    color: '#3E3833',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  periodButtonRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  periodButton: {
-    flex: 1,
-    alignItems: 'center',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#D2BEB8',
-    backgroundColor: '#F1E5E1',
-    paddingVertical: 9,
-  },
-  periodButtonActive: {
-    borderColor: '#A86873',
-    backgroundColor: '#EBD8DC',
-  },
-  periodButtonText: {
-    color: '#625850',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  periodButtonTextActive: {
-    color: '#A86873',
-  },
-  calendar: {
-    gap: 8,
-    zIndex: 30,
-  },
-  calendarSelectorRow: {
-    flexDirection: 'row',
-    gap: 8,
-    zIndex: 40,
-  },
-  calendarSelectorGroup: {
-    position: 'relative',
-    flex: 1,
-    zIndex: 40,
-  },
-  calendarSelectorButton: {
-    minHeight: 42,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(222, 212, 201, 0.78)',
-    backgroundColor: 'rgba(251, 250, 247, 0.68)',
-    paddingHorizontal: 12,
-  },
-  calendarSelectorText: {
-    color: '#342725',
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  calendarSelectorChevron: {
-    color: '#625850',
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  calendarSelectorMenu: {
-    position: 'absolute',
-    top: 48,
-    left: 0,
-    right: 0,
-    zIndex: 60,
-    maxHeight: 238,
-    overflow: 'hidden',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#D8C4BE',
-    backgroundColor: 'rgba(255, 255, 255, 0.96)',
-  },
-  calendarSelectorItem: {
-    minHeight: 38,
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E7D2CD',
-  },
-  calendarSelectorItemActive: {
-    backgroundColor: '#EBD8DC',
-  },
-  calendarSelectorItemText: {
-    color: '#3E3833',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  calendarSelectorItemTextActive: {
-    color: '#A86873',
-  },
-  weekdayRow: {
-    flexDirection: 'row',
-  },
-  weekdayText: {
-    flex: 1,
-    color: '#8B8076',
-    fontSize: 11,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  calendarGrid: {
-    gap: 4,
-  },
-  calendarWeekRow: {
-    flexDirection: 'row',
-  },
-  calendarCell: {
-    flex: 1,
-    minHeight: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  calendarCellInRange: {
-    backgroundColor: '#EBD8DC',
-  },
-  calendarCellSelected: {
-    borderRadius: 8,
-    backgroundColor: '#A86873',
-  },
-  calendarDayText: {
-    color: '#3E3833',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  calendarDayTextSelected: {
-    color: '#F8EFEC',
-  },
-  activeDateDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#B96A76',
-    marginTop: 2,
-  },
-  activeDateDotSelected: {
-    backgroundColor: '#F8EFEC',
-  },
   bottomDock: {
     gap: 12,
   },
   savedCardRow: {
     gap: 12,
     paddingRight: 18,
-  },
-  savedCard: {
-    width: 286,
-    height: 272,
-    overflow: 'hidden',
-    borderRadius: 12,
-    backgroundColor: '#F8EFEC',
-    borderWidth: 1,
-    borderColor: '#D8C4BE',
-  },
-  savedCardImage: {
-    width: '100%',
-    height: 116,
-  },
-  savedCardImagePlaceholder: {
-    height: 116,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#E5D4CF',
-  },
-  savedCardImagePlaceholderText: {
-    color: '#7C7065',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  savedCardContent: {
-    flex: 1,
-    padding: 13,
-    gap: 7,
-  },
-  savedCardTitle: {
-    color: '#342725',
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  savedCardDate: {
-    color: '#7C7065',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  savedCardDiary: {
-    minHeight: 36,
-    color: '#3E3833',
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 18,
-  },
-  savedCardMeta: {
-    color: '#8B8076',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  savedHashtagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  savedHashtagChip: {
-    borderRadius: 999,
-    backgroundColor: '#E7D2CD',
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-  },
-  savedHashtagText: {
-    color: '#6F5143',
-    fontSize: 12,
-    fontWeight: '800',
   },
   emptySavedCard: {
     borderRadius: 10,
@@ -2037,11 +1099,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#A86873',
     paddingVertical: 15,
-  },
-  buttonText: {
-    color: '#F8EFEC',
-    fontSize: 16,
-    fontWeight: '800',
   },
   pickerOverlay: {
     flex: 1,
@@ -2129,17 +1186,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingTop: 8,
     paddingBottom: 12,
-  },
-  modalCloseButton: {
-    borderRadius: 999,
-    backgroundColor: '#E5D4CF',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  modalCloseButtonText: {
-    color: '#4F463E',
-    fontSize: 13,
-    fontWeight: '800',
   },
   modalContent: {
     paddingHorizontal: 18,
@@ -2239,11 +1285,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  secondaryButtonText: {
-    color: '#7A5057',
-    fontSize: 13,
-    fontWeight: '800',
-  },
   photoRow: {
     gap: 10,
     paddingVertical: 2,
@@ -2340,154 +1381,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: '#A86873',
     paddingVertical: 15,
-  },
-  detailOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(33,29,26,0.35)',
-  },
-  detailSheet: {
-    maxHeight: '82%',
-    overflow: 'hidden',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    backgroundColor: '#F8EFEC',
-  },
-  detailActionBar: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    zIndex: 5,
-    flexDirection: 'row',
-    gap: 8,
-  },
-  detailActionButton: {
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-  },
-  detailActionText: {
-    color: '#3E3833',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  detailDeleteButton: {
-    borderRadius: 999,
-    backgroundColor: '#ECDADD',
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-  },
-  detailDeleteText: {
-    color: '#9D4F5B',
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  detailImageFrame: {
-    position: 'relative',
-    height: 260,
-    backgroundColor: '#E5D4CF',
-  },
-  detailImageButton: {
-    width: '100%',
-    height: '100%',
-  },
-  detailImage: {
-    width: '100%',
-    height: '100%',
-  },
-  photoNavButton: {
-    position: 'absolute',
-    top: '44%',
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.88)',
-  },
-  photoNavButtonLeft: {
-    left: 12,
-  },
-  photoNavButtonRight: {
-    right: 12,
-  },
-  photoNavButtonText: {
-    color: '#342725',
-    fontSize: 28,
-    fontWeight: '800',
-    lineHeight: 30,
-  },
-  photoPager: {
-    position: 'absolute',
-    right: 14,
-    bottom: 12,
-    flexDirection: 'row',
-    gap: 6,
-    borderRadius: 999,
-    backgroundColor: 'rgba(33,29,26,0.28)',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  photoPagerDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.55)',
-  },
-  photoPagerDotActive: {
-    width: 16,
-    backgroundColor: '#F8EFEC',
-  },
-  detailImagePlaceholder: {
-    height: 220,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#E5D4CF',
-  },
-  fullScreenPhotoOverlay: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.92)',
-    padding: 18,
-  },
-  fullScreenPhoto: {
-    width: '100%',
-    height: '82%',
-  },
-  fullScreenPhotoClose: {
-    position: 'absolute',
-    top: 58,
-    right: 18,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  fullScreenPhotoCloseText: {
-    color: '#F8EFEC',
-    fontSize: 14,
-    fontWeight: '900',
-  },
-  detailContent: {
-    padding: 18,
-    gap: 10,
-  },
-  detailTitle: {
-    color: '#342725',
-    fontSize: 24,
-    fontWeight: '900',
-  },
-  detailDate: {
-    color: '#7C7065',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  detailDiary: {
-    color: '#3E3833',
-    fontSize: 16,
-    lineHeight: 23,
   },
   quickRangeRow: {
   flexDirection: 'row',

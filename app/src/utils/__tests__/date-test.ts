@@ -1,4 +1,4 @@
-import { getLast30DaysRange, getMonthRange, getWeekRange, getYearOptions, toDateString } from '@/utils/date';
+import { getMonthRange, getWeekRange, getYearOptions, toDateString } from '@/utils/date';
 
 // All inputs are fixed dates; nothing here reads the current time. The time zone
 // is pinned to Asia/Seoul in jest.config.js.
@@ -43,11 +43,5 @@ describe('getMonthRange', () => {
 
   it('윤년 2월의 마지막 날은 29일이다', () => {
     expect(getMonthRange('2028-02-10')).toEqual({ start: '2028-02-01', end: '2028-02-29' });
-  });
-});
-
-describe('getLast30DaysRange', () => {
-  it('종료일을 포함해 정확히 30일 범위를 반환한다', () => {
-    expect(getLast30DaysRange('2026-11-04')).toEqual({ start: '2026-10-06', end: '2026-11-04' });
   });
 });

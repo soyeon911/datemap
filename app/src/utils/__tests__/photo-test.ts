@@ -1,5 +1,5 @@
 import type { SavedDatePlace } from '@/db/date-cards';
-import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
+import { getOrderedPhotoUris, getPhotoExtension, stepPhotoIndex } from '@/utils/photo';
 
 function makePlace(coverPhotoUri: string | null, photoUris: string[]) {
   return { coverPhotoUri, photoUris } as SavedDatePlace;
@@ -34,5 +34,19 @@ describe('getPhotoExtension', () => {
 
   it('defaults to .jpg for unknown extensions', () => {
     expect(getPhotoExtension('file:///a/photo.gif')).toBe('.jpg');
+  });
+});
+
+describe('stepPhotoIndex', () => {
+  it('moves forward', () => {
+    expect(stepPhotoIndex(0, 1, 3)).toBe(1);
+  });
+
+  it('wraps from the last photo to the first', () => {
+    expect(stepPhotoIndex(2, 1, 3)).toBe(0);
+  });
+
+  it('wraps from the first photo to the last', () => {
+    expect(stepPhotoIndex(0, -1, 3)).toBe(2);
   });
 });
