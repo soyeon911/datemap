@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { supabase } from '@/lib/supabase';
+import type { SyncedFields } from '@/sync/date-place-merge';
 
 const PHOTO_BUCKET = 'date-photos';
 
@@ -255,14 +256,18 @@ async function runPull(db: SQLiteDatabase) {
 
       for (const place of places ?? []) {
         await db.runAsync(
-          `INSERT INTO date_places (id, date_entry_id, place_id, place_name, address, latitude, longitude, one_line_diary, hashtags_json, cover_photo_uri, normalized_search_text, sync_status, owner_user_id, couple_id, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'synced', ?, ?, ?, ?)
+          // The WHERE keeps an edit that has not uploaded yet: it would otherwise be
+          // replaced by the older server copy and marked as synced.
+          `INSERT INTO date_places (id, date_entry_id, place_id, place_name, address, latitude, longitude, one_line_diary, hashtags_json, cover_photo_uri, normalized_search_text, sync_status, owner_user_id, couple_id, created_at, updated_at, server_version, synced_fields_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'synced', ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              date_entry_id = excluded.date_entry_id, place_id = excluded.place_id, place_name = excluded.place_name,
              address = excluded.address, latitude = excluded.latitude, longitude = excluded.longitude,
              one_line_diary = excluded.one_line_diary, hashtags_json = excluded.hashtags_json,
              normalized_search_text = excluded.normalized_search_text, sync_status = 'synced',
-             owner_user_id = excluded.owner_user_id, couple_id = excluded.couple_id, updated_at = excluded.updated_at`,
+             owner_user_id = excluded.owner_user_id, couple_id = excluded.couple_id, updated_at = excluded.updated_at,
+             server_version = excluded.server_version, synced_fields_json = excluded.synced_fields_json
+           WHERE date_places.sync_status = 'synced'`,
           [
             place.id,
             place.date_entry_id,
@@ -278,6 +283,8 @@ async function runPull(db: SQLiteDatabase) {
             place.couple_id,
             place.created_at,
             place.updated_at,
+            place.version ?? null,
+            JSON.stringify(toSyncedFields(place)),
           ]
         );
       }
@@ -312,7 +319,7 @@ async function runPull(db: SQLiteDatabase) {
       );
 
       if (coverPhoto?.localUri) {
-        await db.runAsync('UPDATE date_places SET cover_photo_uri = ? WHERE id = ?', [
+        await db.runAsync(`UPDATE date_places SET cover_photo_uri = ? WHERE id = ? AND sync_status = 'synced'`, [
           coverPhoto.localUri,
           place.id,
         ]);
@@ -389,6 +396,30 @@ async function downloadMissingPhotos(db: SQLiteDatabase) {
     await FileSystem.downloadAsync(signed.signedUrl, destinationUri);
     await db.runAsync('UPDATE date_photos SET local_uri = ? WHERE id = ?', [destinationUri, photo.id]);
   }
+}
+
+type RemoteDatePlace = {
+  date_entry_id: string;
+  place_id: string | null;
+  place_name: string;
+  address: string | null;
+  latitude: number;
+  longitude: number;
+  one_line_diary: string | null;
+  hashtags: string[] | null;
+};
+
+function toSyncedFields(place: RemoteDatePlace): SyncedFields {
+  return {
+    dateEntryId: place.date_entry_id,
+    placeId: place.place_id,
+    placeName: place.place_name,
+    address: place.address,
+    latitude: place.latitude,
+    longitude: place.longitude,
+    oneLineDiary: place.one_line_diary,
+    hashtags: place.hashtags ?? [],
+  };
 }
 
 function guessContentType(extension: string) {

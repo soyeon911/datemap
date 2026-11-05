@@ -116,6 +116,20 @@ describe('pullRemoteChanges', () => {
     expect(committedAtSelect).toEqual([false, false, false, true, true, true]);
   });
 
+  it('leaves an edit that has not uploaded yet alone', async () => {
+    mockRemoteTables();
+    const { db } = createFakeDb();
+
+    await pullRemoteChanges(db);
+
+    const placeUpsert = jest
+      .mocked(db.runAsync)
+      .mock.calls.map(([sql]) => String(sql))
+      .find((sql) => sql.startsWith('INSERT INTO date_places'));
+
+    expect(placeUpsert).toContain("WHERE date_places.sync_status = 'synced'");
+  });
+
   it('still runs a waiting call after the previous one fails', async () => {
     const { db, statements } = createFakeDb();
 
