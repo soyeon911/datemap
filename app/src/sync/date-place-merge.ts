@@ -70,6 +70,37 @@ export function mergeSyncedFields(base: SyncedFields | null, mine: SyncedFields,
   return { merged: copyGroups(mine, theirs, takeTheirs), conflicts };
 }
 
+const GROUP_LABELS: Record<FieldGroup, string> = {
+  date: '날짜',
+  place: '장소',
+  diary: '일기',
+  hashtags: '해시태그',
+};
+
+const EMPTY_VALUE = '(없음)';
+
+function describeGroup(fields: SyncedFields, group: FieldGroup) {
+  switch (group) {
+    case 'date':
+      return fields.dateEntryId.replace(/^entry_/, '');
+    case 'place':
+      return fields.placeName;
+    case 'diary':
+      return fields.oneLineDiary || EMPTY_VALUE;
+    case 'hashtags':
+      return fields.hashtags.map((tag) => `#${tag}`).join(' ') || EMPTY_VALUE;
+  }
+}
+
+export function describeConflict(groups: FieldGroup[], mine: SyncedFields, theirs: SyncedFields) {
+  return groups
+    .map(
+      (group) =>
+        `${GROUP_LABELS[group]}\n내 수정: ${describeGroup(mine, group)}\n다른 기기: ${describeGroup(theirs, group)}`
+    )
+    .join('\n\n');
+}
+
 export function parseSyncedFields(json: string | null): SyncedFields | null {
   if (!json) {
     return null;

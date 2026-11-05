@@ -1,4 +1,4 @@
-import { mergeSyncedFields, parseSyncedFields, copyGroups, type SyncedFields } from '@/sync/date-place-merge';
+import { copyGroups, describeConflict, mergeSyncedFields, parseSyncedFields, type SyncedFields } from '@/sync/date-place-merge';
 
 const base: SyncedFields = {
   dateEntryId: 'entry_2026-11-01',
@@ -61,6 +61,21 @@ describe('copyGroups', () => {
     const theirs = { ...base, oneLineDiary: '서버 일기', placeName: '서버 이름' };
 
     expect(copyGroups(base, theirs, ['diary'])).toEqual({ ...base, oneLineDiary: '서버 일기' });
+  });
+});
+
+describe('describeConflict', () => {
+  it('shows both values for each conflicting group', () => {
+    const mine = { ...base, oneLineDiary: 'B 일기', hashtags: [] };
+    const theirs = { ...base, oneLineDiary: null, dateEntryId: 'entry_2026-11-02', hashtags: ['야경'] };
+
+    expect(describeConflict(['date', 'diary', 'hashtags'], mine, theirs)).toBe(
+      [
+        '날짜\n내 수정: 2026-11-01\n다른 기기: 2026-11-02',
+        '일기\n내 수정: B 일기\n다른 기기: (없음)',
+        '해시태그\n내 수정: (없음)\n다른 기기: #야경',
+      ].join('\n\n')
+    );
   });
 });
 

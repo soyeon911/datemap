@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { askConflictChoice } from '@/components/home/ask-conflict-choice';
 import { CalendarPicker } from '@/components/home/calendar-picker';
 import { FullScreenPhotoModal } from '@/components/home/full-screen-photo-modal';
 import { modalStyles } from '@/components/home/modal-styles';
@@ -52,7 +53,14 @@ import { useSavedPlaces } from '@/hooks/use-saved-places';
 import { useAuth } from '@/lib/auth-context';
 import { useCouple } from '@/lib/couple-context';
 import { searchNaverPlaces, type NaverPlaceSearchResult } from '@/services/naver-place-search';
-import { backfillCoupleId, deleteRemoteDatePlace, pullRemoteChanges, pushDatePlace } from '@/sync/cloud-sync';
+import {
+  backfillCoupleId,
+  deleteRemoteDatePlace,
+  pullRemoteChanges,
+  pushDatePlace,
+  resolveDatePlaceConflict,
+  type PushResult,
+} from '@/sync/cloud-sync';
 import { getOrderedPhotoUris, getPhotoExtension } from '@/utils/photo';
 
 type SelectedCoord = {
@@ -269,13 +277,23 @@ export default function HomeScreen() {
     }
 
     if (session) {
-      void pushDatePlace(db, session.user.id, savedDatePlaceId);
+      void pushDatePlace(db, session.user.id, savedDatePlaceId).then(handlePushResult);
     }
 
     await refreshDatePlaces();
     setSaveMessage(null);
     setEditingDatePlace(null);
     setIsEditorVisible(false);
+  }
+
+  async function handlePushResult(result: PushResult) {
+    await refreshDatePlaces();
+
+    if (result.status === 'conflict') {
+      const keep = await askConflictChoice(result.conflict);
+
+      await handlePushResult(await resolveDatePlaceConflict(db, result.conflict, keep));
+    }
   }
 
   async function handleDeletePlace(place: SavedDatePlace) {
