@@ -1,5 +1,6 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { uniqueHashtags } from '@/utils/hashtag';
 import { buildSearchText } from '@/utils/search-text';
 
 export type SyncStatus = 'local_only' | 'pending_upload' | 'synced';
@@ -220,7 +221,8 @@ export async function getSavedDatePlaces(db: SQLiteDatabase, limit = 30) {
 
   return rows.map((row) => ({
     ...row,
-    hashtags: parseJsonArray(row.hashtagsJson),
+    // Earlier versions could save a repeated tag, and the screens use tags as React keys.
+    hashtags: uniqueHashtags(parseJsonArray(row.hashtagsJson)),
     photoUris: parseJoinedUris(row.photoUrisJoined),
   }));
 }
