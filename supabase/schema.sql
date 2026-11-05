@@ -3,8 +3,8 @@
 -- (user_id, id) composite key, since ids are client-generated strings
 -- (e.g. `entry_20260626`, `place_1735...`) that are only unique per user.
 --
--- For a project that already ran an earlier version of this file, apply
--- migrations/0002_couple_sharing.sql instead of re-running this one.
+-- For a project that already ran an earlier version of this file, apply the
+-- files in migrations/ it is missing instead of re-running this one.
 
 create table couples (
   id uuid primary key default gen_random_uuid(),
@@ -43,6 +43,7 @@ create table date_places (
   hashtags jsonb not null default '[]',
   cover_photo_path text,
   normalized_search_text text,
+  version integer not null default 1,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   primary key (user_id, id),
@@ -100,6 +101,28 @@ end;
 $$;
 
 grant execute on function join_couple(text) to authenticated;
+
+-- Lets a device detect that another device saved first. See
+-- migrations/0003_date_place_versions.sql for why these columns.
+create function bump_date_place_version()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.version := old.version + 1;
+  return new;
+end;
+$$;
+
+create trigger date_places_bump_version
+  before update on date_places
+  for each row
+  when (
+    (old.date_entry_id, old.place_id, old.place_name, old.address, old.latitude, old.longitude, old.one_line_diary, old.hashtags)
+    is distinct from
+    (new.date_entry_id, new.place_id, new.place_name, new.address, new.latitude, new.longitude, new.one_line_diary, new.hashtags)
+  )
+  execute function bump_date_place_version();
 
 create policy "select own or couple" on date_entries for select using (
   auth.uid() = user_id or couple_id in (

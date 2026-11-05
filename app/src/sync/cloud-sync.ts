@@ -3,8 +3,21 @@ import * as FileSystem from 'expo-file-system/legacy';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { supabase } from '@/lib/supabase';
+import {
+  copyGroups,
+  mergeSyncedFields,
+  parseSyncedFields,
+  type FieldGroup,
+  type SyncedFields,
+} from '@/sync/date-place-merge';
+import { buildSearchText } from '@/utils/search-text';
 
 const PHOTO_BUCKET = 'date-photos';
+const UNIQUE_VIOLATION = '23505';
+
+// Each retry means another device saved in the moments since the last read, so a
+// handful is plenty. Anything beyond that surfaces as a failed push.
+const MAX_MERGE_ATTEMPTS = 3;
 
 type LocalDatePlaceRow = {
   id: string;
@@ -25,6 +38,8 @@ type LocalDatePlaceRow = {
   weekOfYear: number;
   yearMonth: string;
   summary: string | null;
+  serverVersion: number | null;
+  syncedFieldsJson: string | null;
 };
 
 type LocalPhotoRow = {
@@ -34,7 +49,41 @@ type LocalPhotoRow = {
   sortOrder: number;
 };
 
-export async function pushDatePlace(db: SQLiteDatabase, userId: string, datePlaceId: string) {
+export type DatePlaceConflict = {
+  userId: string;
+  datePlaceId: string;
+  groups: FieldGroup[];
+  merged: SyncedFields;
+  theirs: SyncedFields;
+  serverVersion: number;
+};
+
+export type PushResult =
+  | { status: 'synced' }
+  | { status: 'failed' }
+  | { status: 'conflict'; conflict: DatePlaceConflict };
+
+let syncQueue: Promise<unknown> = Promise.resolve();
+
+// Pulls and pushes share one SQLite connection, and overlapping withTransactionAsync
+// calls break each other: the second BEGIN fails, and its ROLLBACK cancels the first
+// call's open transaction. A push overlapping another push would also read the same
+// version and report this device's own edit as a conflict. So each call waits its
+// turn, and reads the server itself rather than sharing a running call, so a pull
+// made right after a couple link sees the new rows.
+function enqueueSync<T>(task: () => Promise<T>) {
+  const result = syncQueue.then(task);
+
+  syncQueue = result.catch(() => undefined);
+
+  return result;
+}
+
+export function pushDatePlace(db: SQLiteDatabase, userId: string, datePlaceId: string) {
+  return enqueueSync(() => runPush(db, userId, datePlaceId));
+}
+
+async function runPush(db: SQLiteDatabase, userId: string, datePlaceId: string, attempt = 0): Promise<PushResult> {
   try {
     const place = await db.getFirstAsync<LocalDatePlaceRow>(
       `SELECT
@@ -50,6 +99,8 @@ export async function pushDatePlace(db: SQLiteDatabase, userId: string, datePlac
         date_places.cover_photo_uri AS coverPhotoUri,
         date_places.normalized_search_text AS normalizedSearchText,
         date_places.couple_id AS coupleId,
+        date_places.server_version AS serverVersion,
+        date_places.synced_fields_json AS syncedFieldsJson,
         date_entries.date,
         date_entries.year,
         date_entries.month,
@@ -63,7 +114,7 @@ export async function pushDatePlace(db: SQLiteDatabase, userId: string, datePlac
     );
 
     if (!place) {
-      return;
+      return { status: 'failed' };
     }
 
     const photos = await db.getAllAsync<LocalPhotoRow>(
@@ -108,9 +159,7 @@ export async function pushDatePlace(db: SQLiteDatabase, userId: string, datePlac
       throw entryError;
     }
 
-    const { error: placeError } = await supabase.from('date_places').upsert({
-      id: place.id,
-      user_id: userId,
+    const placeFields = {
       couple_id: place.coupleId,
       date_entry_id: place.dateEntryId,
       place_id: place.placeId,
@@ -123,10 +172,15 @@ export async function pushDatePlace(db: SQLiteDatabase, userId: string, datePlac
       cover_photo_path: coverPhoto?.remoteUrl ?? null,
       normalized_search_text: place.normalizedSearchText,
       updated_at: nowIso,
-    });
+    };
 
-    if (placeError) {
-      throw placeError;
+    const serverVersion =
+      place.serverVersion === null
+        ? await insertRemotePlace(userId, datePlaceId, placeFields)
+        : await updateRemotePlace(userId, datePlaceId, place.serverVersion, placeFields);
+
+    if (serverVersion === null) {
+      return await mergeWithServer(db, userId, place, attempt);
     }
 
     if (uploadedPhotos.length > 0) {
@@ -146,10 +200,204 @@ export async function pushDatePlace(db: SQLiteDatabase, userId: string, datePlac
       }
     }
 
-    await db.runAsync(`UPDATE date_places SET sync_status = 'synced' WHERE id = ?`, [datePlaceId]);
+    await db.runAsync(
+      `UPDATE date_places SET sync_status = 'synced', server_version = ?, synced_fields_json = ? WHERE id = ?`,
+      [serverVersion, JSON.stringify(toLocalSyncedFields(place)), datePlaceId]
+    );
+
+    return { status: 'synced' };
   } catch (error) {
     console.error('[cloud-sync] pushDatePlace failed:', error);
+
+    return { status: 'failed' };
   }
+}
+
+// Matches no row when another device saved after this one last read, which is the
+// whole check: comparing and writing in one UPDATE leaves no gap between the two.
+async function updateRemotePlace(
+  userId: string,
+  datePlaceId: string,
+  expectedVersion: number,
+  fields: Record<string, unknown>
+) {
+  const { data, error } = await supabase
+    .from('date_places')
+    .update(fields)
+    .eq('user_id', userId)
+    .eq('id', datePlaceId)
+    .eq('version', expectedVersion)
+    .select('version');
+
+  if (error) {
+    throw error;
+  }
+
+  return (data?.[0]?.version as number | undefined) ?? null;
+}
+
+async function insertRemotePlace(userId: string, datePlaceId: string, fields: Record<string, unknown>) {
+  const { data, error } = await supabase
+    .from('date_places')
+    .insert({ id: datePlaceId, user_id: userId, ...fields })
+    .select('version')
+    .single();
+
+  if (error?.code === UNIQUE_VIOLATION) {
+    return null;
+  }
+
+  if (error) {
+    throw error;
+  }
+
+  return data.version as number;
+}
+
+async function mergeWithServer(
+  db: SQLiteDatabase,
+  userId: string,
+  place: LocalDatePlaceRow,
+  attempt: number
+): Promise<PushResult> {
+  if (attempt >= MAX_MERGE_ATTEMPTS) {
+    throw new Error(`gave up merging ${place.id} after ${attempt} attempts`);
+  }
+
+  const { data: remote, error } = await supabase
+    .from('date_places')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('id', place.id)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  // Deleted on another device: uploading it again matches what the old upsert did.
+  if (!remote) {
+    await db.runAsync('UPDATE date_places SET server_version = NULL, synced_fields_json = NULL WHERE id = ?', [
+      place.id,
+    ]);
+
+    return runPush(db, userId, place.id, attempt + 1);
+  }
+
+  const theirs = toSyncedFields(remote);
+  const { merged, conflicts } = mergeSyncedFields(
+    parseSyncedFields(place.syncedFieldsJson),
+    toLocalSyncedFields(place),
+    theirs
+  );
+
+  if (conflicts.length > 0) {
+    return {
+      status: 'conflict',
+      conflict: {
+        userId,
+        datePlaceId: place.id,
+        groups: conflicts,
+        merged,
+        theirs,
+        serverVersion: remote.version,
+      },
+    };
+  }
+
+  await saveMergedFields(db, userId, place.id, merged, remote.version, theirs);
+
+  return runPush(db, userId, place.id, attempt + 1);
+}
+
+export function resolveDatePlaceConflict(db: SQLiteDatabase, conflict: DatePlaceConflict, keep: 'mine' | 'theirs') {
+  return enqueueSync(async (): Promise<PushResult> => {
+    const { userId, datePlaceId, groups, merged, theirs, serverVersion } = conflict;
+
+    try {
+      const fields = keep === 'mine' ? merged : copyGroups(merged, theirs, groups);
+
+      await saveMergedFields(db, userId, datePlaceId, fields, serverVersion, theirs);
+
+      return await runPush(db, userId, datePlaceId);
+    } catch (error) {
+      console.error('[cloud-sync] resolveDatePlaceConflict failed:', error);
+
+      return { status: 'failed' };
+    }
+  });
+}
+
+// Records the server state as the new base, so the upload that follows expects the
+// version just read and later merges compare against it.
+async function saveMergedFields(
+  db: SQLiteDatabase,
+  userId: string,
+  datePlaceId: string,
+  fields: SyncedFields,
+  serverVersion: number,
+  serverFields: SyncedFields
+) {
+  await ensureLocalEntry(db, userId, fields.dateEntryId);
+
+  await db.runAsync(
+    `UPDATE date_places
+     SET date_entry_id = ?, place_id = ?, place_name = ?, address = ?, latitude = ?, longitude = ?,
+       one_line_diary = ?, hashtags_json = ?, normalized_search_text = ?, server_version = ?, synced_fields_json = ?
+     WHERE id = ?`,
+    [
+      fields.dateEntryId,
+      fields.placeId,
+      fields.placeName,
+      fields.address,
+      fields.latitude,
+      fields.longitude,
+      fields.oneLineDiary,
+      JSON.stringify(fields.hashtags),
+      buildSearchText(fields),
+      serverVersion,
+      JSON.stringify(serverFields),
+      datePlaceId,
+    ]
+  );
+}
+
+// Taking the other device's date can point at an entry this device has never pulled.
+async function ensureLocalEntry(db: SQLiteDatabase, userId: string, dateEntryId: string) {
+  const existing = await db.getFirstAsync<{ id: string }>('SELECT id FROM date_entries WHERE id = ?', [dateEntryId]);
+
+  if (existing) {
+    return;
+  }
+
+  const { data: entry, error } = await supabase
+    .from('date_entries')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('id', dateEntryId)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  await db.runAsync(
+    `INSERT OR IGNORE INTO date_entries (id, owner_user_id, couple_id, date, year, month, week_of_year, year_month, summary, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      entry.id,
+      entry.user_id,
+      entry.couple_id,
+      entry.date,
+      entry.year,
+      entry.month,
+      entry.week_of_year,
+      entry.year_month,
+      entry.summary,
+      entry.created_at,
+      entry.updated_at,
+    ]
+  );
 }
 
 export async function deleteRemoteDatePlace(userId: string, datePlaceId: string) {
@@ -192,7 +440,11 @@ export async function backfillCoupleId(db: SQLiteDatabase, userId: string, coupl
   }
 }
 
-export async function pullRemoteChanges(db: SQLiteDatabase) {
+export function pullRemoteChanges(db: SQLiteDatabase) {
+  return enqueueSync(() => runPull(db));
+}
+
+async function runPull(db: SQLiteDatabase) {
   try {
     // No .eq('user_id', ...) filter here: RLS already scopes these selects to rows
     // the caller owns or shares a couple with, so whatever comes back is visible.
@@ -242,14 +494,18 @@ export async function pullRemoteChanges(db: SQLiteDatabase) {
 
       for (const place of places ?? []) {
         await db.runAsync(
-          `INSERT INTO date_places (id, date_entry_id, place_id, place_name, address, latitude, longitude, one_line_diary, hashtags_json, cover_photo_uri, normalized_search_text, sync_status, owner_user_id, couple_id, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'synced', ?, ?, ?, ?)
+          // The WHERE keeps an edit that has not uploaded yet: it would otherwise be
+          // replaced by the older server copy and marked as synced.
+          `INSERT INTO date_places (id, date_entry_id, place_id, place_name, address, latitude, longitude, one_line_diary, hashtags_json, cover_photo_uri, normalized_search_text, sync_status, owner_user_id, couple_id, created_at, updated_at, server_version, synced_fields_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'synced', ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
              date_entry_id = excluded.date_entry_id, place_id = excluded.place_id, place_name = excluded.place_name,
              address = excluded.address, latitude = excluded.latitude, longitude = excluded.longitude,
              one_line_diary = excluded.one_line_diary, hashtags_json = excluded.hashtags_json,
              normalized_search_text = excluded.normalized_search_text, sync_status = 'synced',
-             owner_user_id = excluded.owner_user_id, couple_id = excluded.couple_id, updated_at = excluded.updated_at`,
+             owner_user_id = excluded.owner_user_id, couple_id = excluded.couple_id, updated_at = excluded.updated_at,
+             server_version = excluded.server_version, synced_fields_json = excluded.synced_fields_json
+           WHERE date_places.sync_status = 'synced'`,
           [
             place.id,
             place.date_entry_id,
@@ -265,6 +521,8 @@ export async function pullRemoteChanges(db: SQLiteDatabase) {
             place.couple_id,
             place.created_at,
             place.updated_at,
+            place.version ?? null,
+            JSON.stringify(toSyncedFields(place)),
           ]
         );
       }
@@ -299,7 +557,7 @@ export async function pullRemoteChanges(db: SQLiteDatabase) {
       );
 
       if (coverPhoto?.localUri) {
-        await db.runAsync('UPDATE date_places SET cover_photo_uri = ? WHERE id = ?', [
+        await db.runAsync(`UPDATE date_places SET cover_photo_uri = ? WHERE id = ? AND sync_status = 'synced'`, [
           coverPhoto.localUri,
           place.id,
         ]);
@@ -376,6 +634,43 @@ async function downloadMissingPhotos(db: SQLiteDatabase) {
     await FileSystem.downloadAsync(signed.signedUrl, destinationUri);
     await db.runAsync('UPDATE date_photos SET local_uri = ? WHERE id = ?', [destinationUri, photo.id]);
   }
+}
+
+type RemoteDatePlace = {
+  date_entry_id: string;
+  place_id: string | null;
+  place_name: string;
+  address: string | null;
+  latitude: number;
+  longitude: number;
+  one_line_diary: string | null;
+  hashtags: string[] | null;
+};
+
+function toSyncedFields(place: RemoteDatePlace): SyncedFields {
+  return {
+    dateEntryId: place.date_entry_id,
+    placeId: place.place_id,
+    placeName: place.place_name,
+    address: place.address,
+    latitude: place.latitude,
+    longitude: place.longitude,
+    oneLineDiary: place.one_line_diary,
+    hashtags: place.hashtags ?? [],
+  };
+}
+
+function toLocalSyncedFields(place: LocalDatePlaceRow): SyncedFields {
+  return {
+    dateEntryId: place.dateEntryId,
+    placeId: place.placeId,
+    placeName: place.placeName,
+    address: place.address,
+    latitude: place.latitude,
+    longitude: place.longitude,
+    oneLineDiary: place.oneLineDiary,
+    hashtags: parseHashtags(place.hashtagsJson),
+  };
 }
 
 function guessContentType(extension: string) {
