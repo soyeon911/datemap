@@ -2,7 +2,7 @@
 
 ## 저장소 결정
 
-MVP 로컬 DB는 SQLite로 결정합니다.
+기록은 기기의 SQLite에 먼저 저장하고, 로그인 후 Supabase(Postgres)와 동기화합니다. 로컬 스키마는 `app/src/db/migrations.ts`(현재 버전 4), 서버 스키마는 `supabase/schema.sql`과 `supabase/migrations/`가 기준입니다.
 
 SQLite를 선택한 이유:
 
@@ -16,8 +16,8 @@ SQLite를 선택한 이유:
 - 위치, 사진, 메모는 민감한 개인정보로 취급한다.
 - SQLite에는 서비스에 필요한 최소 데이터만 저장한다.
 - API 키, 액세스 토큰, 리프레시 토큰은 데이트 기록 테이블에 저장하지 않는다.
-- 추후 로그인 도입 시 인증 토큰은 보안 저장소 사용을 검토한다.
-- 커플 연동 기능은 사용자별 소유권과 공유 권한을 검증할 수 있게 모델을 확장한다.
+- 로그인 세션은 데이트 기록 테이블이 아니라 암호화 저장소에 둔다 (`docs/decisions/0005-session-encryption-and-safe-logs.md`).
+- 서버의 모든 기록 테이블은 RLS로 본인 기록과 커플 상대 기록만 읽고, 본인 기록만 쓰게 한다.
 
 ## 핵심 엔티티
 
@@ -28,8 +28,8 @@ SQLite를 선택한 이유:
 | 필드 | 타입 | 설명 |
 | --- | --- | --- |
 | `id` | string | 데이트 일자 고유 ID |
-| `ownerUserId` | string nullable | 로그인 도입 후 소유자 ID |
-| `coupleId` | string nullable | 커플 연동 도입 후 공유 공간 ID |
+| `ownerUserId` | string nullable | 소유자 ID. 로그인 전 기록은 `null` |
+| `coupleId` | string nullable | 커플 공유 공간 ID |
 | `date` | string | 데이트 날짜, ISO 날짜 |
 | `year` | number | 검색 최적화용 연도 |
 | `month` | number | 검색 최적화용 월 |
@@ -52,9 +52,13 @@ SQLite를 선택한 이유:
 | `latitude` | number | 위도 |
 | `longitude` | number | 경도 |
 | `oneLineDiary` | string nullable | 한 줄 일기 |
-| `hashtags` | string[] | 해시태그 |
+| `hashtags` | string[] | 해시태그. 입력과 읽기 모두에서 중복을 제거하고 처음 순서를 유지 |
 | `coverPhotoUri` | string nullable | 대표 사진 URI |
-| `syncStatus` | string | 로컬/동기화 상태 |
+| `syncStatus` | string | `local_only`(업로드 전) 또는 `synced` |
+| `ownerUserId` | string nullable | 소유자 ID. 수정·삭제 권한 판단에 사용 |
+| `coupleId` | string nullable | 커플 공유 공간 ID |
+| `serverVersion` | number nullable | 마지막으로 읽은 서버 `version`. 업로드 조건에 사용 |
+| `syncedFieldsJson` | string nullable | 마지막 동기화 시점의 값. 충돌 시 3-way 비교의 기준 |
 | `createdAt` | string | 생성 시각 |
 | `updatedAt` | string | 수정 시각 |
 
@@ -67,7 +71,7 @@ SQLite를 선택한 이유:
 | `id` | string | 사진 고유 ID |
 | `datePlaceId` | string | 연결된 데이트 장소 ID |
 | `localUri` | string | 기기 로컬 사진 URI |
-| `remoteUrl` | string nullable | 서버 업로드 후 URL |
+| `remoteUrl` | string nullable | 업로드 후 Supabase Storage 경로 (`date-photos` 버킷) |
 | `sortOrder` | number | 표시 순서 |
 | `createdAt` | string | 생성 시각 |
 
@@ -129,11 +133,13 @@ SQLite를 선택한 이유:
 - `yearMonth`: `2026-06` 형식의 월별 조회 키
 - `geoHash`: 지도 반경 검색을 위한 위치 인덱스 후보
 
-## SQLite 테이블 초안
+## SQLite 테이블 (현재 버전 4)
+
+`date_cards`(버전 1)는 초기 구조로 남아 있고, 현재 화면과 동기화는 아래 세 테이블을 씁니다.
 
 ```sql
 CREATE TABLE date_entries (
-  id TEXT PRIMARY KEY,
+  id TEXT PRIMARY KEY,               -- entry_YYYY-MM-DD
   owner_user_id TEXT,
   couple_id TEXT,
   date TEXT NOT NULL,
@@ -161,13 +167,17 @@ CREATE TABLE date_places (
   sync_status TEXT NOT NULL DEFAULT 'local_only',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  owner_user_id TEXT,                -- 버전 3
+  couple_id TEXT,                    -- 버전 3
+  server_version INTEGER,            -- 버전 4
+  synced_fields_json TEXT,           -- 버전 4
   FOREIGN KEY (date_entry_id) REFERENCES date_entries(id)
 );
 
 CREATE TABLE date_photos (
   id TEXT PRIMARY KEY,
   date_place_id TEXT NOT NULL,
-  local_uri TEXT NOT NULL,
+  local_uri TEXT NOT NULL,           -- 다른 기기에서 받은 사진은 내려받기 전까지 ''
   remote_url TEXT,
   sort_order INTEGER NOT NULL,
   created_at TEXT NOT NULL,
@@ -175,24 +185,29 @@ CREATE TABLE date_photos (
 );
 ```
 
+## Supabase 테이블
+
+| 테이블 | 키 | 비고 |
+| --- | --- | --- |
+| `couples` | `id` (uuid) | 초대 코드(`invite_code`), 소유자와 파트너 |
+| `date_entries` | `(user_id, id)` | 로컬 ID가 사용자별로만 고유해 복합 키 사용 |
+| `date_places` | `(user_id, id)` | `version` 포함. 내용 칸이 바뀌면 트리거가 1 올림 |
+| `date_photos` | `(user_id, id)` | `storage_path`로 Storage 파일을 가리킴 |
+
+- **RLS:** 읽기는 본인 또는 같은 커플, 쓰기·수정·삭제는 본인(`auth.uid() = user_id`)만 허용합니다.
+- **버전 트리거:** `date_entry_id`, 장소 정보, `one_line_diary`, `hashtags`가 바뀔 때만 올립니다. `couple_id`와 `cover_photo_path`는 제외합니다. 이유는 `docs/decisions/0004-cloud-sync-and-edit-conflicts.md`에 있습니다.
+
+## 동기화 상태 흐름
+
+1. 저장·수정하면 로컬 행이 `local_only`가 된다.
+2. 업로드가 `server_version`과 같은 버전에서만 성공하면 `synced`가 되고, 새 버전과 동기화 값을 기록한다.
+3. 버전이 다르면 서버 값을 읽어 `synced_fields_json`을 기준으로 비교한다. 다른 칸은 합치고, 같은 칸이면 사용자가 고른다.
+4. pull은 `synced` 행만 덮어쓴다. 업로드 전 수정은 지키기 위해서다.
+
 ## 추후 확장 엔티티
 
-### User
+`User`(Supabase Auth), `Couple`(`couples` 테이블), 동기화 상태(`sync_status`, `server_version`, `synced_fields_json`)는 구현되었습니다. 남은 확장 후보는 아래와 같습니다.
 
-- 로그인 사용자
-- 이메일 또는 소셜 로그인 식별자
-- 프로필 이름
-- 생성일
-
-### Couple
-
-- 커플 공유 공간
-- 초대 코드 또는 초대 링크
-- 멤버 목록
-- 공유 권한
-
-### SyncState
-
-- 로컬 변경 여부
-- 서버 동기화 시각
-- 충돌 해결 상태
+- **Keyword 테이블:** 해시태그 사용량이 늘면 문자열 배열에서 분리
+- **삭제 표시(`deleted_at`):** 다른 기기의 삭제를 반영하기 위해 필요 (known-issues Y-3)
+- **사진 비교:** 사진 ID를 유지하도록 바꾼 뒤 충돌 비교 대상에 추가 (known-issues Y-4, Y-7)

@@ -1,5 +1,7 @@
 # Phase 1 Expo SQLite Setup
 
+> 프로젝트 생성 당시의 계획 문서입니다. 현재 구조는 `docs/architecture/app-architecture.md`와 `docs/architecture/data-model.md`를 기준으로 합니다.
+
 ## 목표
 
 React Native + Expo 앱 프로젝트를 만들고, SQLite 기반 로컬 저장소와 보안 기본 설정을 먼저 준비합니다.
