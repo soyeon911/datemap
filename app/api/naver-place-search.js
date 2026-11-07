@@ -58,6 +58,17 @@ function normalizeGeocodeAddress(address, fallbackName, index) {
   };
 }
 
+// Naver error bodies and non-JSON pages are left out of the message: it ends up in
+// the server log, which must not hold search terms or upstream page contents.
+function upstreamError(service, status, payload) {
+  const code = payload?.errorCode ?? payload?.error?.errorCode;
+  return new Error(`${service} failed: ${status}${code ? ` ${code}` : ''}`);
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : 'unknown error';
+}
+
 async function geocodeAddresses(query, mapClientId, mapClientSecret) {
   const url = new URL('https://maps.apigw.ntruss.com/map-geocode/v2/geocode');
   url.searchParams.set('query', query);
@@ -76,11 +87,11 @@ async function geocodeAddresses(query, mapClientId, mapClientSecret) {
   try {
     payload = rawText ? JSON.parse(rawText) : {};
   } catch {
-    throw new Error(`Geocoding response was not JSON: ${rawText.slice(0, 300)}`);
+    throw new Error(`Geocoding response was not JSON: ${geocodeResponse.status}`);
   }
 
   if (!geocodeResponse.ok) {
-    throw new Error(`Geocoding failed: ${geocodeResponse.status} ${JSON.stringify(payload)}`);
+    throw upstreamError('Geocoding', geocodeResponse.status, payload);
   }
 
   return payload.addresses ?? [];
@@ -111,11 +122,11 @@ async function searchLocalPlaces(query, credentials) {
   try {
     payload = rawText ? JSON.parse(rawText) : {};
   } catch {
-    throw new Error(`Local search response was not JSON: ${rawText.slice(0, 300)}`);
+    throw new Error(`Local search response was not JSON: ${localResponse.status}`);
   }
 
   if (!localResponse.ok) {
-    throw new Error(`Local search failed: ${localResponse.status} ${JSON.stringify(payload)}`);
+    throw upstreamError('Local search', localResponse.status, payload);
   }
 
   const items = payload.items ?? [];
@@ -151,11 +162,8 @@ async function searchLocalPlaces(query, credentials) {
         description: item.description ? stripHtml(item.description) : null,
       });
     } catch (error) {
-      console.error('[naver-place-search] geocode item failed:', {
-        name,
-        address,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      // The place name and address come from the user's search, so they stay out.
+      console.error('[naver-place-search] geocode item failed:', errorMessage(error));
     }
   }
 
@@ -236,7 +244,7 @@ module.exports = async function handler(request, response) {
 
     response.status(200).json({ results });
   } catch (error) {
-    console.error('[naver-place-search] failed:', error);
+    console.error('[naver-place-search] failed:', errorMessage(error));
 
     response.status(500).json({ error: 'NAVER_PLACE_SEARCH_FAILED' });
   }

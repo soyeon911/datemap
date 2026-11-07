@@ -115,10 +115,10 @@ describe('naver-place-search proxy', () => {
     expect(response.body).toMatchObject({ results: [{ latitude: 37.56, longitude: 126.97 }] });
   });
 
-  it('keeps upstream error details in the server log only', async () => {
+  it('logs only the upstream status and code, not the search or the error body', async () => {
     mockFetch
       .mockResolvedValueOnce({ ok: true, status: 200 })
-      .mockResolvedValueOnce(jsonResponse(401, { detail: 'upstream-detail-marker' }));
+      .mockResolvedValueOnce(jsonResponse(401, { errorCode: '024', errorMessage: 'upstream-detail-marker' }));
     process.env.VERCEL_ENV = 'production';
     const response = createResponse();
 
@@ -126,7 +126,11 @@ describe('naver-place-search proxy', () => {
 
     expect(response.statusCode).toBe(500);
     expect(response.body).toEqual({ error: 'NAVER_PLACE_SEARCH_FAILED' });
-    expect(String((console.error as jest.Mock).mock.calls[0][1])).toContain('upstream-detail-marker');
+    const logged = String((console.error as jest.Mock).mock.calls[0][1]);
+
+    expect(logged).toBe('Geocoding failed: 401 024');
+    expect(logged).not.toContain('upstream-detail-marker');
+    expect(logged).not.toContain('서울시청');
   });
 
   it('does not reveal which Naver setting is missing', async () => {
