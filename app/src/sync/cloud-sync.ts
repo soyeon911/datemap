@@ -10,6 +10,7 @@ import {
   type FieldGroup,
   type SyncedFields,
 } from '@/sync/date-place-merge';
+import { logError } from '@/utils/error-log';
 import { buildSearchText } from '@/utils/search-text';
 
 const PHOTO_BUCKET = 'date-photos';
@@ -135,7 +136,7 @@ async function runPush(db: SQLiteDatabase, userId: string, datePlaceId: string, 
       if (result.status === 'fulfilled') {
         uploadedPhotos.push(result.value);
       } else {
-        console.error('[cloud-sync] photo upload failed:', photos[index]?.id, result.reason);
+        logError(`[cloud-sync] photo upload failed (${photos[index]?.id}):`, result.reason);
       }
     });
 
@@ -207,7 +208,7 @@ async function runPush(db: SQLiteDatabase, userId: string, datePlaceId: string, 
 
     return { status: 'synced' };
   } catch (error) {
-    console.error('[cloud-sync] pushDatePlace failed:', error);
+    logError('[cloud-sync] pushDatePlace failed:', error);
 
     return { status: 'failed' };
   }
@@ -321,7 +322,7 @@ export function resolveDatePlaceConflict(db: SQLiteDatabase, conflict: DatePlace
 
       return await runPush(db, userId, datePlaceId);
     } catch (error) {
-      console.error('[cloud-sync] resolveDatePlaceConflict failed:', error);
+      logError('[cloud-sync] resolveDatePlaceConflict failed:', error);
 
       return { status: 'failed' };
     }
@@ -414,7 +415,7 @@ export async function deleteRemoteDatePlace(userId: string, datePlaceId: string)
 
     await supabase.from('date_places').delete().eq('user_id', userId).eq('id', datePlaceId);
   } catch (error) {
-    console.error('[cloud-sync] deleteRemoteDatePlace failed:', error);
+    logError('[cloud-sync] deleteRemoteDatePlace failed:', error);
   }
 }
 
@@ -436,7 +437,7 @@ export async function backfillCoupleId(db: SQLiteDatabase, userId: string, coupl
       [coupleId, userId, userId]
     );
   } catch (error) {
-    console.error('[cloud-sync] backfillCoupleId failed:', error);
+    logError('[cloud-sync] backfillCoupleId failed:', error);
   }
 }
 
@@ -564,7 +565,7 @@ async function runPull(db: SQLiteDatabase) {
       }
     }
   } catch (error) {
-    console.error('[cloud-sync] pullRemoteChanges failed:', error);
+    logError('[cloud-sync] pullRemoteChanges failed:', error);
   }
 }
 
